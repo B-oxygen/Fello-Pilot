@@ -17,9 +17,9 @@
  * exit codes.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { globSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 const HARNESS_ROOT = resolve(__dirname, "..", "..");
 
@@ -33,6 +33,20 @@ function readMaybe(p: string): string | null {
   } catch {
     return null;
   }
+}
+
+function listTypeFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const stat = statSync(full);
+    if (stat.isDirectory()) {
+      out.push(...listTypeFiles(full));
+    } else if (entry.endsWith(".ts")) {
+      out.push(full.slice(HARNESS_ROOT.length + 1));
+    }
+  }
+  return out;
 }
 
 // crude: extract string literals quoted with " or ' from a small region.
@@ -98,7 +112,7 @@ for (const fix of FIXTURES) {
 
 // 2) Dead-literal scan: every *Status literal must be narrowed somewhere in src/
 const typeFiles = existsSync(join(HARNESS_ROOT, "src/types"))
-  ? globSync("src/types/*.ts", { cwd: HARNESS_ROOT })
+  ? listTypeFiles(join(HARNESS_ROOT, "src/types"))
   : [];
 
 for (const tf of typeFiles) {
@@ -109,7 +123,7 @@ for (const tf of typeFiles) {
     const literals = [...block[0].matchAll(/"([a-z_A-Z0-9]+)"/g)].map((m) => m[1]);
     for (const lit of literals) {
       const grepCmd = `grep -RIn "\\"${lit}\\"" src/ app/ 2>/dev/null | grep -v "src/types/" || true`;
-      const hits = require("node:child_process").execSync(grepCmd, { encoding: "utf8" });
+      const hits = execSync(grepCmd, { encoding: "utf8" });
       if (!hits.trim()) {
         log(`WARN dead literal "${lit}" — declared in ${tf} but never narrowed on outside src/types/`);
       }
