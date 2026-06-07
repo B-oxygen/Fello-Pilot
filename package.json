@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "demo:safe": "bash scripts/demo_safe.sh",
     "demo:blocked": "bash scripts/demo_blocked.sh",
-    "screenshot": "node scripts/screenshot.mjs"
+    "screenshot": "node scripts/screenshot.mjs",
+    "test": "playwright test",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.0",
@@ -24,6 +26,7 @@
     "wagmi": "^2.19.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
