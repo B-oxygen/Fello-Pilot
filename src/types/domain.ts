@@ -33,6 +33,15 @@ export interface TradeIntent {
   forbidsMainnet: boolean;
 }
 
+export type ExecutionPolicy =
+  | { type: "oneshot" }
+  | { type: "dca"; ticks: number; cadenceSeconds: number }
+  | {
+      type: "alert_triggered";
+      condition: string;
+      pollIntervalSeconds: number;
+    };
+
 export interface TradeProposal {
   id: string;
   createdAt: string;
@@ -43,6 +52,8 @@ export interface TradeProposal {
   delegationPolicy: DelegationPolicy;
   estimatedSlippageBps: number;
   recipient: string;
+  executionPolicy?: ExecutionPolicy;
+  proposalSource?: "llm" | "rule_based";
 }
 
 export type RiskStatus = "APPROVED" | "REJECTED" | "NEEDS_APPROVAL";
@@ -143,6 +154,9 @@ export interface ExecutionReceipt {
   explorerUrl?: string;
   blockedReasons?: string[];
   rawReceipt?: Record<string, unknown>;
+  // DCA-only: 1-indexed tick / total ticks under the parent delegation (P1.2).
+  tickIndex?: number;
+  totalTicks?: number;
 }
 
 export interface MemoryEntry {
@@ -171,6 +185,11 @@ export interface MemoryEntry {
     variant: ReceiptVariant;
     txHash?: string;
     explorerUrl?: string;
+    // DCA-only (P1.2): tick number / total ticks under the same delegation.
+    tickIndex?: number;
+    totalTicks?: number;
+    // Alert-only (P1.3): the parent proposal whose alert fired.
+    parentProposalId?: string;
   };
   evaluation: { honesty: number; scope: number; risk: number; cost: number };
   postmortem: string;

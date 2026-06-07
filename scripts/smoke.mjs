@@ -103,6 +103,28 @@ console.log(
   "log line should now exist in logs/commands.jsonl with stage=coinfello_get_account_invoked",
 );
 
+console.log("\n=== CoinFello sign_in (real CLI invocation; interactive on first run) ===");
+const siStart = Date.now();
+let siResult;
+try {
+  const siRes = await fetch(`${BASE}/api/coinfello/sign_in`, { method: "POST" });
+  siResult = await siRes.json();
+} catch (err) {
+  siResult = { ok: false, error: String(err) };
+}
+const siMs = Date.now() - siStart;
+console.log("ok:", siResult.ok ?? false);
+console.log("duration_ms:", siMs);
+if (siResult.stdout) {
+  console.log("stdout (first 200 chars):", String(siResult.stdout).slice(0, 200));
+}
+if (siResult.stderr) {
+  console.log("stderr (first 200 chars):", String(siResult.stderr).slice(0, 200));
+}
+console.log(
+  "log line should now exist in logs/commands.jsonl with stage=coinfello_sign_in_invoked",
+);
+
 console.log("\n=== Honesty assertions ===");
 const honestyChecks = [
   { name: "blocked.simulated === false", pass: r.simulated === false },
@@ -112,8 +134,12 @@ const honestyChecks = [
   { name: "unsafe risk.verdict fail", pass: unsafeRisk.json.verdict === "fail" },
   { name: "9 risk dims", pass: safeRisk.json.dimensions.length === 9 },
   {
-    name: "coinfello CLI invocation logged",
+    name: "coinfello get_account invocation logged",
     pass: typeof cfResult.ok === "boolean",
+  },
+  {
+    name: "coinfello sign_in invocation logged",
+    pass: typeof siResult.ok === "boolean",
   },
 ];
 let fails = 0;
