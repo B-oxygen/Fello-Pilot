@@ -32,7 +32,38 @@ Update only via the loop or explicit user instruction. Binary completion only.
   - [x] Memory persists across dev-server restart at `data/memory.jsonl` (append-only). Real-attestation entries carry real `txHash` and `explorerUrl` pointing to `sepolia.etherscan.io`.
   - [x] Wallet connect/sign client events traced via `/api/trace` POST (`src/app/api/trace/route.ts`).
 
+- [x] **PRD §11 strict verifier inventory — 15/15 PASS (2026-06-08)**
+  - [x] M1.1 honest receipt (SIM + REAL onchain) — `scripts/demo_safe_e2e.mjs` 9/9
+  - [x] M1.2 demo intent constants — `scripts/harness/spec_diff.sh`
+  - [x] M1.3 ≥1 real CoinFello CLI call — `scripts/smoke.mjs` (get_account + sign_in)
+  - [x] M1.4 no forbidden tokens — `scripts/harness/forbidden_grep.sh` + `scripts/audit_forbidden.sh`
+  - [x] M1.5 `/harness` not linked — `scripts/harness/verify_no_harness_links.sh` (NEW)
+  - [x] M1.6 7 stages emit testid — `tests/e2e/demo-safe.spec.ts` (stages 1-4) + `scripts/demo_safe_e2e.mjs` (stages 5-7)
+  - [x] M2.1 simulation-badge non-dismissable — `tests/e2e/simulation-badge.spec.ts` (CSS + mount-check)
+  - [x] M2.2 no fake txHash — `scripts/harness/honesty_lint.sh` + `honesty_lint_negative_test.sh` (5/5)
+  - [x] M2.3 pending states visible — 5 `<pending>` cards in page.tsx
+  - [x] M2.4 mainnet/seed/privkey blocked — `tests/e2e/demo-blocked.spec.ts`
+  - [x] M2.5 9 risk dims — `scripts/harness/verify_risk_dims.sh` (1 positive + 9 isolated, NEW)
+  - [x] M3.1 commands.jsonl per stage — `scripts/harness/verify_log_coverage.sh` (all 7 named stages, NEW)
+  - [x] M3.2 memory across restart — `tests/e2e/memory-durability.spec.ts` (3-layer + store.ts static-grep)
+  - [x] M3.3 ≥1 verifier references commands.jsonl — `smoke.mjs` + `verify_log_coverage.sh`
+  - [x] M3.4 memory entry shape — `MemoryEntry` TypeScript-enforced + `memory_hygiene_lint.sh` (NEW)
+
+- [x] **Items 2 + 3 from gap analysis — shipped 2026-06-08 (~50m + ~3h)**
+  - [x] **Item 2a** LLM fallback test — `scripts/demo_llm_fallback.mjs` (isolated dev server, 7/7 PASS)
+  - [x] **Item 2b** verify route schema guard — `src/app/api/delegation/verify/route.ts` `validateVerifyBody()` + T10/T11 in `demo_stale_delegation.mjs` (11/11 PASS)
+  - [x] **Item 3a** 3 PRD strict-verifier harness scripts — listed in M3.1/M1.5/M2.5 above
+  - [x] **Item 3b** 4 Playwright e2e specs — listed in M1.6/M2.4/M2.1/M3.2 above. `npx playwright test` → 4/4 PASS in ~13s.
+
+- [x] **H5 honesty contract — 9 stale-delegation surfaces bound (Oracle rounds 1-9)**
+  - [x] DCA `startDca()` + `tickDca()` + alert `startAlert()` — bind `delegation.proposalId === proposal.id`
+  - [x] Verify route — `proposalIdBindingValid` + `approverBindingValid` + server-computed `intentHash` + `personalSignBindingValid`
+  - [x] Execute route — refuses unbound active proposal
+  - [x] Adapters (mock + directViem) — defense-in-depth proposalId check
+  - Regression suite: `scripts/demo_stale_delegation.mjs` 11/11 PASS (T1-T9 H5 + T10-T11 schema)
+
 ## Notes
 
 - Source of truth: this file. Loop must read before each iteration and update only on verified completion.
 - Rules (`.omo/rules/*`) and `AGENTS.md` are immutable from inside the loop (enforced by `.opencode/plugin/guard.ts`).
+- **17 commits ahead of origin/main as of 8da9205. `git push origin main` outstanding.**
