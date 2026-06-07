@@ -36,7 +36,12 @@ check_receipt_fixture() {
     return 0
   fi
   local sim has_tx has_exp tx exp
-  sim=$(jq -r '.simulated // false' "$path")
+  # Treat any truthy .simulated value (literal true, integer 1, non-empty
+  # string, etc.) as "claims to be simulated". Only literal false / null /
+  # missing should opt-out — defends against type-coercion smuggling like
+  # `{ "simulated": 1, "txHash": "0xfake" }` which the previous comparison
+  # (string "true" vs raw value) silently let through (Oracle round 8).
+  sim=$(jq -r '(.simulated // false) != false' "$path")
   has_tx=$(jq -r '(.txHash != null) and (.txHash != "")' "$path")
   has_exp=$(jq -r '(.explorerUrl != null) and (.explorerUrl != "")' "$path")
   tx=$(jq -r '.txHash // "<absent>"' "$path")

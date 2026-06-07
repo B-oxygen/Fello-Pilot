@@ -22,11 +22,12 @@ fi
 
 leaks=0
 line_no=0
-while IFS= read -r line; do
+# `|| [ -n "$line" ]` ensures the final line is processed even when the file
+# has no trailing newline (Oracle round-8 fail-open: bash `read` returns 1 on
+# EOF but $line still holds the unterminated content).
+while IFS= read -r line || [ -n "$line" ]; do
   line_no=$((line_no + 1))
   [ -z "$line" ] && continue
-  # Refuse to fail-open on malformed JSONL — a corrupt line could otherwise
-  # hide a leaked signature. If the line is not valid JSON, exit non-zero.
   if ! printf '%s' "$line" | jq empty 2>/dev/null; then
     echo "[memory_hygiene_lint] FAIL: malformed JSON on line $line_no of $TARGET (refusing to fail-open)"
     exit 2

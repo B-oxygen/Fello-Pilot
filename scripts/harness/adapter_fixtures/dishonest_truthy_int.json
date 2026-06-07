@@ -1,0 +1,13 @@
+{
+  "_doc": "Edge-case dishonest fixture for PRD AC-6.3: simulated:1 (integer 1, type-coerced to truthy) + txHash:'0xfake'. Oracle round-8 flagged the prior bash string comparison (`[ \"$sim\" = \"true\" ]`) skipping this. honesty_lint.sh MUST reject (exit != 0).",
+  "proposalId": "prop_NEGATIVE_TRUTHY_INT",
+  "traceId": "trace_dishonest_int",
+  "status": "MOCK_EXECUTED",
+  "variant": "simulated_attestation",
+  "adapter": "mock",
+  "runtimeMode": "SIMULATION",
+  "simulated": 1,
+  "message": "DISHONEST EDGE CASE — simulated coerced to integer 1, paired with fake hash.",
+  "timestamp": "2026-06-07T00:00:00.000Z",
+  "txHash": "0xfake0000000000000000000000000000000000000000000000000000000000fa"
+}

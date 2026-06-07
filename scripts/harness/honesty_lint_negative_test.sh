@@ -53,6 +53,8 @@ assert_reject scripts/harness/adapter_fixtures/dishonest_explorer_only.json \
   "simulated:true + explorerUrl only (no txHash)"
 assert_reject scripts/harness/adapter_fixtures/dishonest_short_txhash.json \
   "simulated:true + txHash:'0x' (no hex body)"
+assert_reject scripts/harness/adapter_fixtures/dishonest_truthy_int.json \
+  "simulated:1 (integer truthy) + fake 0x... txHash"
 
 assert_accept scripts/harness/adapter_fixtures/honest_simulated_receipt.json \
   "simulated:true + txHash absent + explorerUrl absent"
