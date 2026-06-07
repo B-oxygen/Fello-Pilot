@@ -7,8 +7,15 @@
 .sisyphus/
 .omo/loop-*.json
 .omo/loop-*.yaml
+.omo/next-emotion.txt
 
 logs/
 data/
 scripts/harness/.last-run-mode
 *.log
+
+node_modules/
+.next/
+*.tsbuildinfo
+playwright-report/
+test-results/
