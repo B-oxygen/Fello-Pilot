@@ -106,6 +106,18 @@ export type DelegationStatus =
   | "approved"
   | "rejected";
 
+export interface DelegationAttestationPayload {
+  signature: string;
+  intent: {
+    approver: string;
+    action: string;
+    tokenAllowlist: string[];
+    spendingCap: string;
+    expiry: string;
+    proposalId: string;
+  };
+}
+
 export interface DelegationState {
   proposalId: string;
   status: DelegationStatus;
@@ -126,6 +138,7 @@ export interface DelegationState {
   signatureMethod?: SignatureMethod;
   signedAt?: string;
   signatureValid?: boolean;
+  attestation?: DelegationAttestationPayload;
 }
 
 export type ExecutionStatus = "MOCK_EXECUTED" | "SUBMITTED" | "FAILED" | "BLOCKED";
@@ -157,6 +170,9 @@ export interface ExecutionReceipt {
   // DCA-only: 1-indexed tick / total ticks under the parent delegation (P1.2).
   tickIndex?: number;
   totalTicks?: number;
+  contractAddress?: string;
+  contractFunction?: string;
+  contractAudited?: boolean;
 }
 
 export interface MemoryEntry {
@@ -190,6 +206,8 @@ export interface MemoryEntry {
     totalTicks?: number;
     // Alert-only (P1.3): the parent proposal whose alert fired.
     parentProposalId?: string;
+    contractAddress?: string;
+    contractFunction?: string;
   };
   evaluation: { honesty: number; scope: number; risk: number; cost: number };
   postmortem: string;

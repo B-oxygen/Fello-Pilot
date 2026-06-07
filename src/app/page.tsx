@@ -45,7 +45,8 @@ type Msg =
   | { id: string; kind: "dca-progress"; tick: number; total: number; remainingCap: number; perTickAmount: number }
   | { id: string; kind: "risk-blocked-tick"; tick: number; total: number; failedDims: string[] }
   | { id: string; kind: "alert-armed"; condition: string; proposalId: string }
-  | { id: string; kind: "trigger-fired"; condition: string; newProposalId: string; parentProposalId: string };
+  | { id: string; kind: "trigger-fired"; condition: string; newProposalId: string; parentProposalId: string }
+  | { id: string; kind: "contract-unaudited-notice"; contractAddress: string };
 
 async function clientTrace(stage: string, extra: Record<string, unknown> = {}) {
   try {
@@ -555,6 +556,17 @@ export default function FelloPilotPage() {
             });
           }
         }
+        if (
+          body.receipt.variant === "real_attestation" &&
+          typeof body.receipt.contractAddress === "string" &&
+          body.receipt.contractAudited === false
+        ) {
+          push({
+            id: mid(),
+            kind: "contract-unaudited-notice",
+            contractAddress: body.receipt.contractAddress,
+          });
+        }
         push({ id: mid(), kind: "receipt", receipt: body.receipt });
         setMemoryKey((k) => k + 1);
       } catch (err) {
@@ -858,6 +870,23 @@ export default function FelloPilotPage() {
                   <div className="notice">
                     Adapter fallback: <strong>{m.from}</strong> → <strong>{m.to}</strong>.{" "}
                     {m.reason}
+                  </div>
+                </div>
+              );
+            }
+            if (m.kind === "contract-unaudited-notice") {
+              return (
+                <div
+                  key={m.id}
+                  className="msg assistant"
+                  data-testid="chat-message-contract-unaudited-notice"
+                  data-contract-address={m.contractAddress}
+                >
+                  <div className="notice">
+                    Receipt anchored on <strong>UNAUDITED</strong> testnet
+                    contract {m.contractAddress.slice(0, 6)}…
+                    {m.contractAddress.slice(-4)}. No third-party security
+                    review. Sepolia-only. Per PRD §10 / operator decision.
                   </div>
                 </div>
               );

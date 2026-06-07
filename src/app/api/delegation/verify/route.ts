@@ -206,6 +206,21 @@ export async function POST(request: Request) {
   // upstream) leave it undefined so direct_viem refuses to anchor.
   const intentHash: Hex | undefined = valid ? expectedIntentHash : undefined;
 
+  const attestationPayload =
+    valid && body.method === "eth_signTypedData_v4"
+      ? {
+          signature: body.signature,
+          intent: {
+            approver: body.message.approver,
+            action: body.message.action,
+            tokenAllowlist: body.message.tokenAllowlist,
+            spendingCap: body.message.spendingCap,
+            expiry: body.message.expiry,
+            proposalId: body.message.proposalId,
+          },
+        }
+      : undefined;
+
   const state: DelegationState = {
     proposalId: body.proposalId,
     status: valid ? "approved" : "rejected",
@@ -241,6 +256,7 @@ export async function POST(request: Request) {
     signatureMethod: body.method,
     signedAt: new Date().toISOString(),
     signatureValid: valid,
+    attestation: attestationPayload,
   };
 
   await writeJson(DataFile.DelegationState, state);

@@ -131,6 +131,7 @@ const sharedChecks = [
     pass: !(receipt.simulated === true && /^0x[0-9a-f]{64}$/i.test(receipt.txHash ?? "")),
   },
 ];
+const DELEGATION_MANAGER_ADDRESS = "0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247";
 let checks;
 if (isReal) {
   checks = [
@@ -148,6 +149,27 @@ if (isReal) {
     },
     { name: "receipt.adapter === direct_viem", pass: receipt.adapter === "direct_viem" },
     { name: "receipt.runtimeMode === LIVE_TESTNET", pass: receipt.runtimeMode === "LIVE_TESTNET" },
+    {
+      name: "receipt.contractAddress === DelegationManager (Sepolia 0xaD12...e247)",
+      pass:
+        typeof receipt.contractAddress === "string" &&
+        receipt.contractAddress.toLowerCase() ===
+          DELEGATION_MANAGER_ADDRESS.toLowerCase(),
+    },
+    {
+      name: "receipt.contractFunction === 'attestIntent' (ERC-7710-style P1.5)",
+      pass: receipt.contractFunction === "attestIntent",
+    },
+    {
+      name: "receipt.contractAudited === false (UNAUDITED testnet contract per PRD §10)",
+      pass: receipt.contractAudited === false,
+    },
+    {
+      name: "memory.execution.contractAddress === DelegationManager (durable record)",
+      pass:
+        latest?.execution?.contractAddress?.toLowerCase() ===
+        DELEGATION_MANAGER_ADDRESS.toLowerCase(),
+    },
     ...sharedChecks,
   ];
 } else if (isSim) {

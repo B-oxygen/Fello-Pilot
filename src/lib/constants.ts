@@ -8,6 +8,11 @@ export const ALERT_TRIGGER_POLL_INTERVAL_S = 30;
 export const SUPPORTED_DEMO_CHAINS = ["sepolia"] as const;
 export const SEPOLIA_CHAIN_ID = 11155111;
 
+export const DELEGATION_MANAGER_ADDRESS =
+  "0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247" as const;
+export const DELEGATION_MANAGER_DEPLOY_TX =
+  "0x41dbd4f0d654674642141a1e0ac3ad9c2f6fb250129eb99673383f6b0889edef" as const;
+
 export const SAFE_DEMO_INTENT =
   "Sepolia testnet에서 1 USDC를 ETH로 스왑하는 데모 자동화 플로우. mainnet 금지. 사람 승인 필수.";
 export const UNSAFE_DEMO_INTENT =

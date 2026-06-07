@@ -118,6 +118,8 @@ export async function POST(_request: Request) {
       variant: receipt.variant,
       txHash: receipt.txHash,
       explorerUrl: receipt.explorerUrl,
+      contractAddress: receipt.contractAddress,
+      contractFunction: receipt.contractFunction,
     },
     evaluation: { honesty: 5, scope: 4, risk: 5, cost: 4 },
     postmortem: receipt.simulated

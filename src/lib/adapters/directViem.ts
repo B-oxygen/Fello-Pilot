@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   encodeAbiParameters,
+  encodeFunctionData,
   formatEther,
   http,
   isHex,
@@ -16,9 +17,36 @@ import type {
   TradeProposal,
 } from "@/types/domain";
 import { BLOCKED_MAINNET_CHAIN_IDS } from "@/types/domain";
-import { SEPOLIA_CHAIN_ID } from "@/lib/constants";
+import {
+  DELEGATION_MANAGER_ADDRESS,
+  SEPOLIA_CHAIN_ID,
+} from "@/lib/constants";
 
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io" as const;
+
+const ATTEST_INTENT_ABI = [
+  {
+    type: "function",
+    name: "attestIntent",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "intent",
+        type: "tuple",
+        components: [
+          { name: "approver", type: "address" },
+          { name: "action", type: "string" },
+          { name: "tokenAllowlist", type: "address[]" },
+          { name: "spendingCap", type: "uint256" },
+          { name: "expiry", type: "uint64" },
+          { name: "proposalId", type: "bytes32" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "intentHash", type: "bytes32" }],
+  },
+] as const;
 
 export function isDirectViemEnabled(): boolean {
   return process.env.FELLOPILOT_ADAPTER === "direct_viem";
@@ -158,20 +186,51 @@ export async function executeDirectViem(args: {
     );
   }
 
-  const calldata = encodeAbiParameters(
-    [
-      { type: "address", name: "approver" },
-      { type: "bytes32", name: "delegationIntentHash" },
-    ],
-    [approver, intentHash],
-  );
+  const attestation = delegation.attestation;
+  const useContract =
+    attestation !== undefined &&
+    typeof attestation.signature === "string" &&
+    attestation.signature.startsWith("0x") &&
+    attestation.signature.length === 132;
+
+  let txData: Hex;
+  let txTo: Address;
+  let contractFunction: string | undefined;
+  if (useContract) {
+    contractFunction = "attestIntent";
+    txTo = DELEGATION_MANAGER_ADDRESS as Address;
+    txData = encodeFunctionData({
+      abi: ATTEST_INTENT_ABI,
+      functionName: "attestIntent",
+      args: [
+        {
+          approver: attestation.intent.approver as Address,
+          action: attestation.intent.action,
+          tokenAllowlist: attestation.intent.tokenAllowlist as Address[],
+          spendingCap: BigInt(attestation.intent.spendingCap),
+          expiry: BigInt(attestation.intent.expiry),
+          proposalId: attestation.intent.proposalId as Hex,
+        },
+        attestation.signature as Hex,
+      ],
+    });
+  } else {
+    txTo = signer.address;
+    txData = encodeAbiParameters(
+      [
+        { type: "address", name: "approver" },
+        { type: "bytes32", name: "delegationIntentHash" },
+      ],
+      [approver, intentHash],
+    );
+  }
 
   let txHash: Hex;
   try {
     txHash = await walletClient.sendTransaction({
-      to: signer.address,
+      to: txTo,
       value: 0n,
-      data: calldata,
+      data: txData,
     });
   } catch (err) {
     return {
@@ -189,6 +248,8 @@ export async function executeDirectViem(args: {
       rawReceipt: {
         signerAddress: signer.address,
         signerBalanceWei: balance.toString(),
+        contractAddress: useContract ? DELEGATION_MANAGER_ADDRESS : undefined,
+        contractFunction,
       },
     };
   }
@@ -229,7 +290,9 @@ export async function executeDirectViem(args: {
     simulated: false,
     message:
       onchain.status === "success"
-        ? "Delegation attested onchain on Sepolia. Attestation tx, not the swap itself."
+        ? useContract
+          ? "Delegation attested onchain on Sepolia via DelegationManager.attestIntent. UNAUDITED testnet contract."
+          : "Delegation attested onchain on Sepolia. Attestation tx, not the swap itself."
         : `tx ${txHash} reverted onchain.`,
     timestamp,
     chainId,
@@ -237,6 +300,9 @@ export async function executeDirectViem(args: {
     txnId: txHash,
     txHash,
     explorerUrl: `${SEPOLIA_EXPLORER}/tx/${txHash}`,
+    contractAddress: useContract ? DELEGATION_MANAGER_ADDRESS : undefined,
+    contractFunction,
+    contractAudited: useContract ? false : undefined,
     rawReceipt: {
       attestation: true,
       approver,
@@ -246,6 +312,9 @@ export async function executeDirectViem(args: {
       effectiveGasPrice: onchain.effectiveGasPrice.toString(),
       signerAddress: signer.address,
       signerBalanceBefore: formatEther(balance),
+      contractAddress: useContract ? DELEGATION_MANAGER_ADDRESS : undefined,
+      contractFunction,
+      contractAudited: useContract ? false : undefined,
     },
   };
 }

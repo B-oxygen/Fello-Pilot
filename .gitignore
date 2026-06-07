@@ -19,3 +19,10 @@ node_modules/
 *.tsbuildinfo
 playwright-report/
 test-results/
+
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+tests/e2e/.signserver.pid
+test-results/
