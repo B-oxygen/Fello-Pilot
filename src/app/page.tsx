@@ -40,7 +40,12 @@ type Msg =
   | { id: string; kind: "delegation-signed"; proposal: TradeProposal; approver: string; method: string; signedAt: string }
   | { id: string; kind: "signature-refused"; reason: string }
   | { id: string; kind: "adapter-fallback"; from: string; to: string; reason: string }
-  | { id: string; kind: "receipt"; receipt: ExecutionReceipt };
+  | { id: string; kind: "receipt"; receipt: ExecutionReceipt }
+  | { id: string; kind: "llm-fallback-notice"; from: string; to: string; reason: string }
+  | { id: string; kind: "dca-progress"; tick: number; total: number; remainingCap: number; perTickAmount: number }
+  | { id: string; kind: "risk-blocked-tick"; tick: number; total: number; failedDims: string[] }
+  | { id: string; kind: "alert-armed"; condition: string; proposalId: string }
+  | { id: string; kind: "trigger-fired"; condition: string; newProposalId: string; parentProposalId: string };
 
 async function clientTrace(stage: string, extra: Record<string, unknown> = {}) {
   try {
@@ -213,6 +218,21 @@ export default function FelloPilotPage() {
         }
         proposal = body.proposal as TradeProposal;
         replaceLastPending({ id: mid(), kind: "proposal", proposal });
+        if (Array.isArray(body.fallbackTrail) && body.fallbackTrail.length > 0) {
+          for (const hop of body.fallbackTrail as Array<{
+            from: string;
+            to: string;
+            reason: string;
+          }>) {
+            push({
+              id: mid(),
+              kind: "llm-fallback-notice",
+              from: hop.from,
+              to: hop.to,
+              reason: hop.reason,
+            });
+          }
+        }
       } catch (err) {
         replaceLastPending({
           id: mid(),
@@ -409,6 +429,113 @@ export default function FelloPilotPage() {
         signedAt: new Date().toISOString(),
       });
 
+      const policyType = proposal.executionPolicy?.type ?? "oneshot";
+
+      if (policyType === "dca") {
+        push({ id: mid(), kind: "pending", stage: "submitting" });
+        try {
+          const startRes = await fetch("/api/dca/start", { method: "POST" });
+          const startBody = await startRes.json();
+          replaceLastPending(null);
+          if (!startBody.ok) {
+            push({
+              id: mid(),
+              kind: "signature-refused",
+              reason: startBody.reason ?? "DCA start failed.",
+            });
+            setBusy(false);
+            return;
+          }
+          const initial = startBody.ledger as {
+            totalTicks: number;
+            cadenceSeconds: number;
+            perTickAmount: number;
+          };
+          for (let i = 0; i < initial.totalTicks; i++) {
+            if (i > 0) {
+              await new Promise((r) =>
+                setTimeout(r, initial.cadenceSeconds * 1000),
+              );
+            }
+            const tickRes = await fetch("/api/dca/tick", { method: "POST" });
+            const tickBody = await tickRes.json();
+            if (!tickBody.ok) break;
+            if (tickBody.result === "done") break;
+            const ledger = tickBody.ledger as {
+              totalTicks: number;
+              ticksAttempted: number;
+              consumedAmount: number;
+              perTickAmount: number;
+            };
+            const remainingCap =
+              ledger.totalTicks * ledger.perTickAmount - ledger.consumedAmount;
+            if (tickBody.result === "executed") {
+              push({ id: mid(), kind: "receipt", receipt: tickBody.receipt });
+              push({
+                id: mid(),
+                kind: "dca-progress",
+                tick: ledger.ticksAttempted,
+                total: ledger.totalTicks,
+                remainingCap,
+                perTickAmount: ledger.perTickAmount,
+              });
+            } else if (tickBody.result === "blocked") {
+              const failedDims = (tickBody.failedDims ?? []).map(
+                (d: { name: string }) => d.name,
+              );
+              push({
+                id: mid(),
+                kind: "risk-blocked-tick",
+                tick: ledger.ticksAttempted,
+                total: ledger.totalTicks,
+                failedDims,
+              });
+            }
+            setMemoryKey((k) => k + 1);
+          }
+        } catch (err) {
+          replaceLastPending(null);
+          push({
+            id: mid(),
+            kind: "signature-refused",
+            reason: (err as Error).message,
+          });
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
+      if (policyType === "alert_triggered") {
+        try {
+          const startRes = await fetch("/api/alert/start", { method: "POST" });
+          const startBody = await startRes.json();
+          if (!startBody.ok) {
+            push({
+              id: mid(),
+              kind: "signature-refused",
+              reason: startBody.reason ?? "Alert arm failed.",
+            });
+          } else {
+            push({
+              id: mid(),
+              kind: "alert-armed",
+              condition: startBody.state.condition,
+              proposalId: startBody.state.parentProposalId,
+            });
+          }
+        } catch (err) {
+          push({
+            id: mid(),
+            kind: "signature-refused",
+            reason: (err as Error).message,
+          });
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
       push({ id: mid(), kind: "pending", stage: "submitting" });
       try {
         const res = await fetch("/api/execute", { method: "POST" });
@@ -442,6 +569,49 @@ export default function FelloPilotPage() {
     },
     [address, push, replaceLastPending, signMessageAsync, signTypedDataAsync],
   );
+
+  const handleSimulateTrigger = useCallback(async () => {
+    try {
+      const res = await fetch("/api/alert/simulate_trigger", { method: "POST" });
+      const body = await res.json();
+      if (!body.ok) {
+        push({
+          id: mid(),
+          kind: "signature-refused",
+          reason: body.reason ?? "Trigger failed.",
+        });
+        return;
+      }
+      push({
+        id: mid(),
+        kind: "trigger-fired",
+        condition: body.state.condition,
+        newProposalId: body.newProposal.id,
+        parentProposalId: body.state.parentProposalId,
+      });
+      push({ id: mid(), kind: "proposal", proposal: body.newProposal });
+      push({ id: mid(), kind: "pending", stage: "risk_checking" });
+      const riskRes = await fetch("/api/risk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ proposal: body.newProposal }),
+      });
+      const report = (await riskRes.json()) as RiskReport;
+      replaceLastPending({
+        id: mid(),
+        kind:
+          report.verdict === "fail" ? "risk-blocked" : "risk-report",
+        report,
+      });
+      setMemoryKey((k) => k + 1);
+    } catch (err) {
+      push({
+        id: mid(),
+        kind: "signature-refused",
+        reason: (err as Error).message,
+      });
+    }
+  }, [push, replaceLastPending]);
 
   const onSend = useCallback(
     async (text: string) => {
@@ -696,6 +866,101 @@ export default function FelloPilotPage() {
               return (
                 <div key={m.id} className="msg assistant">
                   <ReceiptCard receipt={m.receipt} />
+                </div>
+              );
+            }
+            if (m.kind === "llm-fallback-notice") {
+              return (
+                <div
+                  key={m.id}
+                  className="msg assistant"
+                  data-testid="chat-message-llm-fallback-notice"
+                  data-from={m.from}
+                  data-to={m.to}
+                >
+                  <div className="notice">
+                    LLM proposal unavailable — fell back to deterministic
+                    rule-based parser. ({m.reason})
+                  </div>
+                </div>
+              );
+            }
+            if (m.kind === "dca-progress") {
+              return (
+                <div
+                  key={m.id}
+                  className="msg assistant"
+                  data-testid="chat-message-dca-progress"
+                  data-tick={m.tick}
+                  data-total={m.total}
+                >
+                  <div className="notice success">
+                    DCA tick <strong>{m.tick} of {m.total}</strong> executed
+                    (per-tick {m.perTickAmount.toFixed(4)}, remaining cap{" "}
+                    {m.remainingCap.toFixed(4)}).
+                  </div>
+                </div>
+              );
+            }
+            if (m.kind === "risk-blocked-tick") {
+              return (
+                <div
+                  key={m.id}
+                  className="msg assistant"
+                  data-testid="chat-message-risk-blocked-tick"
+                  data-tick={m.tick}
+                  data-total={m.total}
+                >
+                  <div className="notice error">
+                    Risk blocked tick <strong>{m.tick} of {m.total}</strong>:{" "}
+                    {m.failedDims.join(", ")}. No spend consumed.
+                  </div>
+                </div>
+              );
+            }
+            if (m.kind === "alert-armed") {
+              return (
+                <div
+                  key={m.id}
+                  className="msg assistant"
+                  data-testid="chat-message-alert-armed"
+                  data-proposal-id={m.proposalId}
+                >
+                  <div className="card">
+                    <div className="card-title">
+                      <span className="icon" /> Alert armed
+                    </div>
+                    <div style={{ fontSize: 13 }}>
+                      Condition: <strong>{m.condition}</strong>. 알림이 발생하면
+                      새 proposal이 생성되고 Stage 2부터 다시 흐릅니다.
+                    </div>
+                    <button
+                      type="button"
+                      className="seed-prompt"
+                      style={{ marginTop: 8 }}
+                      data-testid="alert-simulate-trigger"
+                      onClick={() => void handleSimulateTrigger()}
+                    >
+                      Simulate trigger fire
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+            if (m.kind === "trigger-fired") {
+              return (
+                <div
+                  key={m.id}
+                  className="msg assistant"
+                  data-testid="chat-message-trigger-fired"
+                  data-proposal-id={m.newProposalId}
+                  data-parent-proposal-id={m.parentProposalId}
+                >
+                  <div className="notice">
+                    Alert condition met (<strong>{m.condition}</strong>) — starting
+                    new proposal{" "}
+                    <code>{m.newProposalId.slice(0, 16)}…</code>
+                  </div>
                 </div>
               );
             }
