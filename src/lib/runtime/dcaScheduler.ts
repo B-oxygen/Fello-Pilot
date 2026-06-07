@@ -64,11 +64,21 @@ export async function startDca(): Promise<StartResult> {
     DataFile.DelegationState,
     null,
   );
-  if (!delegation || delegation.signatureValid !== true) {
+  // H5 invariant (PRD §2): the signed delegation MUST belong to THIS proposal,
+  // not a stale one left in the store from a previous flow. Without this check
+  // a fresh proposal could ride a delegation signed for a different proposal.
+  if (
+    !delegation ||
+    delegation.signatureValid !== true ||
+    delegation.proposalId !== proposal.id
+  ) {
     return {
       ok: false,
       code: "NO_DELEGATION",
-      reason: "Delegation not signed/verified for this proposal.",
+      reason:
+        delegation && delegation.proposalId !== proposal.id
+          ? `Delegation belongs to a different proposal (${delegation.proposalId}); refusing to bind DCA to ${proposal.id}.`
+          : "Delegation not signed/verified for this proposal.",
     };
   }
 
@@ -155,11 +165,21 @@ export async function tickDca(): Promise<TickResult> {
     DataFile.DelegationState,
     null,
   );
-  if (!delegation) {
+  // H5 invariant re-checked every tick: delegation must still be signed AND
+  // bind the exact ledger.proposalId. Prevents stale-delegation replay after
+  // proposal swap mid-flight.
+  if (
+    !delegation ||
+    delegation.signatureValid !== true ||
+    delegation.proposalId !== ledger.proposalId
+  ) {
     return {
       ok: false,
       code: "NO_DELEGATION",
-      reason: "Delegation cleared during DCA run.",
+      reason:
+        delegation && delegation.proposalId !== ledger.proposalId
+          ? `Delegation no longer binds DCA proposal ${ledger.proposalId} (current delegation proposalId=${delegation.proposalId}).`
+          : "Delegation cleared or invalidated during DCA run.",
     };
   }
 

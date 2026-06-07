@@ -38,7 +38,7 @@ Remaining work is **only scope-expansion** (P1.5 ERC-7710 contract — operator 
 ├── src/                               Product layer (Next.js App Router)
 │   ├── app/                           Routes + layout + globals.css
 │   │   ├── api/                       9 route handlers
-│   │   ├── page.tsx                   Chat orchestrator (17 chat variants, state machine)
+│   │   ├── page.tsx                   Chat orchestrator (22 chat variants, executionPolicy dispatch, simulate-trigger handler)
 │   │   ├── layout.tsx                 wagmi cookie hydration
 │   │   ├── providers.tsx              WagmiProvider + QueryClient
 │   │   └── globals.css                Design tokens (subset of uniport-cointoss)
@@ -143,7 +143,7 @@ Unset `FELLOPILOT_ADAPTER` to fall back to mock (SIMULATION branch).
 ## What's done (don't redo)
 
 ### Shipped (verified)
-- 7-stage chat flow (17 ChatMessage variants implemented, 4 spec-only deferred)
+- 7-stage chat flow with 22 ChatMessage variants implemented (21 PRD-spec'd + alert-armed scaffold); 4 previously spec-only variants (llm-fallback-notice / dca-progress / risk-blocked-tick / trigger-fired) shipped 2026-06-07.
 - 9-dim risk gate (6 base + 3 new: slippageWithinCap, expiryWithinWindow, recipientAllowed)
 - EIP-712 typed-data delegation signing + `personal_sign` fallback (server verifies both)
 - 3 adapters with priority selection via env (mock / direct_viem / coinfello)

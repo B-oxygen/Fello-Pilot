@@ -8,7 +8,11 @@ import {
   DataFile,
 } from "@/lib/store";
 import { ALERT_TRIGGER_POLL_INTERVAL_S } from "@/lib/constants";
-import type { MemoryEntry, TradeProposal } from "@/types/domain";
+import type {
+  DelegationState,
+  MemoryEntry,
+  TradeProposal,
+} from "@/types/domain";
 
 const ALERT_STATE_FILE = "alert_state.json";
 
@@ -25,7 +29,11 @@ export interface AlertState {
 
 export type AlertStartResult =
   | { ok: true; state: AlertState }
-  | { ok: false; code: "NO_PROPOSAL" | "NOT_ALERT"; reason: string };
+  | {
+      ok: false;
+      code: "NO_PROPOSAL" | "NOT_ALERT" | "NO_DELEGATION";
+      reason: string;
+    };
 
 export async function startAlert(): Promise<AlertStartResult> {
   const proposal = await readJson<TradeProposal | null>(DataFile.Proposal, null);
@@ -40,6 +48,28 @@ export async function startAlert(): Promise<AlertStartResult> {
       ok: false,
       code: "NOT_ALERT",
       reason: "Active proposal has no alert_triggered executionPolicy.",
+    };
+  }
+  // H5 invariant (PRD §2): arming an alert watcher REQUIRES a fresh,
+  // proposal-bound delegation. Without this an attacker (or stale state)
+  // could arm an alert that later fires and re-enters Stage 2 carrying
+  // the trust signal of someone else's signature.
+  const delegation = await readJson<DelegationState | null>(
+    DataFile.DelegationState,
+    null,
+  );
+  if (
+    !delegation ||
+    delegation.signatureValid !== true ||
+    delegation.proposalId !== proposal.id
+  ) {
+    return {
+      ok: false,
+      code: "NO_DELEGATION",
+      reason:
+        delegation && delegation.proposalId !== proposal.id
+          ? `Delegation belongs to a different proposal (${delegation.proposalId}); refusing to arm alert for ${proposal.id}.`
+          : "Delegation not signed/verified for this alert proposal.",
     };
   }
   const state: AlertState = {

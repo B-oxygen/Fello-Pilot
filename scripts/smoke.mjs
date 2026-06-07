@@ -125,6 +125,25 @@ console.log(
   "log line should now exist in logs/commands.jsonl with stage=coinfello_sign_in_invoked",
 );
 
+function commandsLogContainsStage(stage) {
+  try {
+    const raw = readFileSync(resolve(process.cwd(), "logs/commands.jsonl"), "utf8");
+    for (const line of raw.split("\n")) {
+      const t = line.trim();
+      if (!t) continue;
+      try {
+        const j = JSON.parse(t);
+        if (j.stage === stage) return true;
+      } catch {
+        // ignore malformed lines
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 console.log("\n=== Honesty assertions ===");
 const honestyChecks = [
   { name: "blocked.simulated === false", pass: r.simulated === false },
@@ -134,12 +153,12 @@ const honestyChecks = [
   { name: "unsafe risk.verdict fail", pass: unsafeRisk.json.verdict === "fail" },
   { name: "9 risk dims", pass: safeRisk.json.dimensions.length === 9 },
   {
-    name: "coinfello get_account invocation logged",
-    pass: typeof cfResult.ok === "boolean",
+    name: "coinfello get_account stage logged in commands.jsonl",
+    pass: commandsLogContainsStage("coinfello_get_account_invoked"),
   },
   {
-    name: "coinfello sign_in invocation logged",
-    pass: typeof siResult.ok === "boolean",
+    name: "coinfello sign_in stage logged in commands.jsonl",
+    pass: commandsLogContainsStage("coinfello_sign_in_invoked"),
   },
 ];
 let fails = 0;
