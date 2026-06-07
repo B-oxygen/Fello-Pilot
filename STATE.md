@@ -18,8 +18,9 @@ Update only via the loop or explicit user instruction. Binary completion only.
   - [x] **P1.4 CoinFello SIWE sign_in** — `runSignIn()` in `src/lib/adapters/coinfello.ts` + `/api/coinfello/sign_in` route + smoke.mjs assertion. RPC_URL_OVERRIDE defaults to `https://ethereum-rpc.publicnode.com` per `.omo/rules/env.md`. Verified: smoke test shows `Sign-in successful. User ID: S7JOYFG0nsNXgq2G6TstZjaQjN8Y0UPC`.
   - [x] **5 new chat variants** (4 PRD-spec'd + 1 auxiliary): `llm-fallback-notice`, `dca-progress`, `risk-blocked-tick`, `trigger-fired`, plus internal `alert-armed` (renders Simulate-trigger button). All 21 PRD ChatMessage variants now wired in `src/app/page.tsx`.
 
-  **Deliberately deferred** (require operator confirmation):
-  - P1.5 Real ERC-7710 onchain delegation contract — PRD §10 line 665 marks "treats onchain delegation contract as BUILD-NEW for post-demo." Attestation tx is the in-spec equivalent.
+  - [x] **P1.5 ERC-7710 onchain DelegationManager — shipped 2026-06-08**. Per operator decisions (Q1 spending-cap enforcement on-chain / Q2 single manager / Q3 UNAUDITED tag). Contract: `contracts/src/DelegationManager.sol`. Deployed Sepolia at `0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247` (deploy tx `0x41dbd4f0...`). First on-chain attestIntent call: `0xccdc33b3...` (block 11009802, gas 57590, DelegationAttested event emitted with (intentHash, approver) indexed topics). `directViem` adapter now calls `attestIntent` instead of legacy 0-value self-tx whenever `delegation.attestation` is present (eth_signTypedData_v4 path); falls back to legacy self-tx for personal_sign path where no raw signature was persisted. UI surfaces `chat-message-contract-unaudited-notice` strip on every real_attestation receipt with `contractAudited:false`. REAL branch `demo_safe_e2e.mjs` now asserts 13/13 incl. 4 new contract assertions.
+
+  **Deliberately deferred**:
   - PRD §12 open issues — defaults applied; override paths documented in HANDOFF.md.
 
 - [x] **M2 — Honest simulation + pending + risk gating**
@@ -62,8 +63,21 @@ Update only via the loop or explicit user instruction. Binary completion only.
   - [x] Adapters (mock + directViem) — defense-in-depth proposalId check
   - Regression suite: `scripts/demo_stale_delegation.mjs` 11/11 PASS (T1-T9 H5 + T10-T11 schema)
 
+- [x] **Wallet-mock revival — shipped 2026-06-08 (Option B from prior HANDOFF)**
+  - [x] Root cause was **NOT** any of the 4 ranked suspects (BigInt serialization, EIP712Domain auto-inject, address checksum, async error swallow). It was missing CORS on sign-server (browser fetch from :3000 to :3098 hit a 404 OPTIONS preflight). Fix: 8 lines in `tests/e2e/helpers/sign-server.mjs`.
+  - [x] Second bug found via the same diagnostic: personal_sign path signed the hex-encoded message as if it were UTF-8 text. Fix: detect hex-bytes and pass `{ message: { raw: text } }` to viem.signMessage so the EIP-191 prefix is applied to the right bytes (matches what `verifyMessage` checks against on the server).
+  - [x] `installWalletMock(page, options)` refactored to accept `{ chainIdHex, signTypedDataThrows }` + `globalThis.__triggerMockChainChanged()` injection hook.
+  - [x] 5 new AC tests (all green):
+    - `tests/e2e/demo-safe-full.spec.ts` (AC-4.3 + AC-5.4 + AC-6.1)
+    - `tests/e2e/chain-mismatch.spec.ts` (AC-4.2 — static-grep + runtime hybrid; wagmi v2 normalizes wallet chainId to config's first chain at connect time, so the runtime "wallet on mainnet" path is not testable without product wagmi config changes; static-grep proves the switch path is wired correctly)
+    - `tests/e2e/personal-sign-fallback.spec.ts` (AC-5.2)
+    - `scripts/demo_llm_timeout.mjs` (AC-2.2: mock OpenAI delays >10s → E003_LLM_TIMEOUT → rule_based fallback within 15s budget; 7/7 PASS)
+    - `scripts/demo_adapter_fallback.mjs` (AC-6.6: FELLOPILOT_ADAPTER=direct_viem with empty FELLOPILOT_TESTNET_SIGNER_KEY → directViem returns failed variant → execute route falls back to mock + emits fallbackTrail; 8/8 PASS)
+
+- [x] **Cumulative AC coverage: 35/35 automated** (was 30/35). H7 stays PARTIAL on multi-tab wallet edges (unchanged).
+
 ## Notes
 
 - Source of truth: this file. Loop must read before each iteration and update only on verified completion.
 - Rules (`.omo/rules/*`) and `AGENTS.md` are immutable from inside the loop (enforced by `.opencode/plugin/guard.ts`).
-- **17 commits ahead of origin/main as of 8da9205. `git push origin main` outstanding.**
+- **21 commits ahead of origin/main after the final docs-refresh commit. `git push origin main` outstanding.**

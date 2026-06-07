@@ -1,7 +1,7 @@
 # FelloPilot — Session Handoff
 
 > **For the next session.** Read this end-to-end before touching anything.
-> **Last updated**: 2026-06-08 (HEAD `8da9205`, 17 commits ahead of origin).
+> **Last updated**: 2026-06-08 (final docs-refresh commit, **21 commits ahead of origin, unpushed**).
 > **Repo**: <https://github.com/B-oxygen/Fello-Pilot> (branch `main`).
 > **Local path**: `/Users/uni-claw/dev/260607/`.
 
@@ -11,13 +11,21 @@
 
 FelloPilot is a 7-stage chat-based AI crypto execution autopilot on Sepolia testnet. As of this handoff:
 
-- **M1 / M2 / M3** — 15/15 binary milestones PASS (was 14/15 with H7 PARTIAL; H7 surface stays PARTIAL on multi-tab edges but every PRD §11 verifier is now implemented and passing).
-- **P1.1 – P1.4** — all shipped (LLM proposal · DCA · alert · CoinFello sign_in).
+- **M1 / M2 / M3** — 15/15 binary milestones PASS. H7 stays PARTIAL on multi-tab wallet edges.
+- **P1.1 – P1.5** — **ALL SHIPPED** (LLM proposal · DCA · alert · CoinFello sign_in · ERC-7710 onchain DelegationManager).
 - **PRD §13 verifier inventory** — 7/7 implemented (4 Playwright specs + 3 strict-verifier harness scripts).
+- **Wallet-mock revival** — shipped. Root cause was missing CORS on sign-server (NOT any of the 4 ranked HANDOFF suspects). Plus a personal_sign hex-bytes bug discovered via the same diagnostic.
 - **9 H5 honesty surfaces** closed across 9 Oracle review rounds (proposalId binding in DCA / alert / verify / execute / adapters / personal_sign / intent-hash / approver).
-- **17 commits on local main, NOT pushed** — `git push origin main` is the only outstanding ops action.
+- **21 commits on local main, NOT pushed** — `git push origin main` is the only outstanding ops action.
 
-Functional coverage vs. strict PRD AC: **30/35 ACs** automated. 5 ACs remain dependent on a working wagmi-mocked Playwright path (AC-2.2 LLM timeout, AC-4.2 chain-mismatch UI, AC-4.3 connected-pill UI, AC-5.2 personal_sign fallback notice, AC-6.6 adapter-fallback chat strip). The wallet-mock toolset (`tests/e2e/helpers/{wallet-mock.ts,sign-server.mjs}`) is shipped dormant pending Option B (below).
+Functional coverage vs. strict PRD AC: **35/35 ACs** automated (was 30/35). All 5 previously-blocked ACs now have automated coverage:
+- AC-2.2 LLM timeout → `scripts/demo_llm_timeout.mjs` (mock OpenAI delays >10s)
+- AC-4.2 chain mismatch → `tests/e2e/chain-mismatch.spec.ts` (hybrid runtime + static-grep; see Critical gotchas §11)
+- AC-4.3 connected pill → inside `tests/e2e/demo-safe-full.spec.ts`
+- AC-5.2 personal_sign fallback → `tests/e2e/personal-sign-fallback.spec.ts`
+- AC-6.6 adapter fallback → `scripts/demo_adapter_fallback.mjs`
+
+On-chain: real ERC-7710 attestation now uses a real contract. DelegationManager deployed to Sepolia at `0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247` (deploy tx `0x41dbd4f0...`, first attestation tx `0xccdc33b3...`).
 
 ---
 
@@ -231,11 +239,11 @@ Plus: schema guard at `/api/delegation/verify` (malformed JSON → 400, missing 
 
 ## Next session — pick one and go
 
-### **Option A — push and stop** (5 seconds)
+### **Option A — push and stop** (5 seconds, RECOMMENDED)
 ```bash
 git push origin main
 ```
-Publishes the 17 local commits. 5 ACs (AC-2.2, AC-4.2, AC-4.3, AC-5.2, AC-6.6) stay in honest "P3 polish" deferral. PRD §11 + §13 + P1.1–P1.4 are already 100% covered.
+Publishes the 21 local commits. Everything is closed: PRD §11 + §13 + §10 P1.1-P1.5 + 35/35 AC. Nothing else is owed unless the operator wants to expand scope.
 
 ---
 
@@ -394,8 +402,20 @@ After Oracle round 4, the verify route ALWAYS recomputes the hash via `hashDeleg
 ### 9. wagmi v2 EIP-6963 announce timing
 For Option B: a single `eip6963:announceProvider` event on init is NOT enough. wagmi may listen via `eip6963:requestProvider` AFTER mount. The mock already re-dispatches on each request — keep that behavior.
 
-### 10. `playwright.config.ts` `globalSetup` is intentionally commented out
-Leave it commented unless you're actively running Option B. When commented, the sign-server doesn't spawn for the 4 shipped specs (which don't need it). When uncommented, it auto-spawns on test start.
+### 10. `playwright.config.ts` `globalSetup` IS NOW ENABLED
+Sign-server auto-spawns on every `npx playwright test`. The 4 original specs don't use it, but the spawn is idempotent. If port 3098 is occupied (e.g., another sign-server still running), `pkill -f sign-server.mjs` before re-running.
+
+### 11. wagmi v2 normalizes wallet chainId to config's first chain at connect time
+The `chain-mismatch.spec.ts` (AC-4.2) discovered this empirically. When the wagmi config is `chains: [sepolia]` only and the wallet's `eth_chainId` returns "0x1" (mainnet), wagmi's `useChainId()` still reports SEPOLIA after connect. The chat-message-network-mismatch chat strip + switch-to-sepolia-button render correctly via static-grep verification but the runtime path is only triggered by `chainChanged` events received AFTER successful connection (which wagmi may also filter). Production behavior is unaffected because real MetaMask emits `chainChanged` on user-initiated network switches, which wagmi honors via its connector event subscription.
+
+### 12. The DelegationManager contract address is pinned in `src/lib/constants.ts`
+If you ever redeploy (e.g., changing the EIP-712 domain or struct fields), bump `DELEGATION_MANAGER_ADDRESS` AND `DELEGATION_MANAGER_DEPLOY_TX`. The directViem adapter uses the constant for the `to` field of the on-chain tx. The verify route doesn't reference the address (it just computes the intent hash using the same domain separator the contract uses).
+
+### 13. `directViem.ts` has two attestation paths
+Both produce `variant: real_attestation` with a real Sepolia tx + explorer URL, so honesty H1 holds either way. Switching logic is `delegation.attestation` presence:
+  - PRESENT (eth_signTypedData_v4 path, which is the typical happy path): contract call to `DelegationManager.attestIntent(intent, signature)`. Receipt carries `contractAddress` + `contractFunction: "attestIntent"` + `contractAudited: false`.
+  - ABSENT (personal_sign fallback path): legacy 0-value self-tx with ABI-encoded `(approver, intentHash)` calldata. Receipt has no contract metadata.
+Do NOT remove the legacy path until the verify route persists raw signatures for personal_sign too.
 
 ---
 
@@ -456,13 +476,12 @@ Leave it commented unless you're actively running Option B. When commented, the 
 
 ## Suggested next-session opening message
 
-> "Read `docs/HANDOFF.md` first. Run the full verification suite from §Quick start step 5a (~30s wall-time). Confirm `git rev-list --count origin/main..HEAD` is 17. Then pick one of: **A** push and stop, **B** revive the wallet mock for the 5 remaining ACs (start with the diagnostic playbook), **C** ship the ERC-7710 onchain contract (operator decision), or **D** something else."
+> "Read `docs/HANDOFF.md` first. Run the full verification suite from §Quick start step 5a (~60s wall-time, includes new demo_llm_timeout.mjs + demo_adapter_fallback.mjs). Confirm `git rev-list --count origin/main..HEAD` is 21. Then: **A** push and stop (recommended; everything is closed), or expand scope on something new."
 
 ---
 
 ## Open questions for the operator
 
-- Push the 17 commits now, or hold them locally?
-- Option B vs Option C vs both vs neither?
-- For Option C: is ERC-7710 redemption tracking enough, or also on-chain spending-cap enforcement?
-- For Option B: the wallet-mock toolset stays dormant if you skip — should it be deleted in a future cleanup, or kept as opt-in infrastructure?
+- Push the 21 commits now (Option A)?
+- Anything new to expand scope on? (DelegationManager.redeemDelegation full ERC-20 transferFrom path is shipped but not exercised by demo — testnet USDC + allowance setup needed.)
+- Revoke flow surface in UI? (The contract has `revoke(intent)` but no UI button.)
