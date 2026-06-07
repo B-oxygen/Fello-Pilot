@@ -1,0 +1,94 @@
+{
+  "_schema": "harness/capability-matrix@2",
+  "_doc": "Provider × action × chain support + verified RPC endpoints. preflight.sh pings every endpoints[].url. Updated post-ralphathon-1 with confirmed CoinFello + direct_viem matrix.",
+  "providers": {
+    "coinfello": {
+      "package": "@coinfello/agent-cli",
+      "auth_server": "https://app.coinfello.com/api/auth",
+      "config_path": "~/.clawdbot/skills/coinfello/config.json",
+      "binary_perm_fix": "chmod +x ~/.npm/_npx/*/node_modules/@coinfello/agent-cli/dist/secure-enclave-signer.app/Contents/MacOS/secure-enclave-signer",
+      "actions": {
+        "create_account": {
+          "supported_chains": ["all"],
+          "notes": "Secure Enclave-backed by default; --use-unsafe-private-key is FORBIDDEN (guard.ts blocks)."
+        },
+        "sign_in": {
+          "supported_chains": ["ethereum-mainnet (SIWE_CHAIN_ID=1 for proof only — does NOT execute mainnet)"],
+          "rpc_required": true,
+          "notes": "SIWE_CHAIN_ID hardcoded to 1 in CLI. RPC defaults to eth.merkle.io (Cloudflare 429 rate-limit). Override with RPC_URL_OVERRIDE."
+        },
+        "send_prompt": {
+          "supported_chains": ["mainnet routes only"],
+          "evidence": "retro/ralphathon-1 F1: live test returned 'I can't prepare that swap on Base Sepolia with the available swap flow here — Base Sepolia isn't supported by this route.'"
+        },
+        "approve_delegation_request": {
+          "supported_chains": ["all"],
+          "prerequisite": "send_prompt must have created pending_delegation.json first",
+          "evidence": "retro/ralphathon-1 K2: calling without prior send_prompt → 'No pending delegation request found'"
+        }
+      }
+    },
+    "direct_viem": {
+      "package": "viem",
+      "default_demo_chain": "sepolia",
+      "default_demo_chain_id": 11155111,
+      "default_demo_rationale": "retro/ralphathon-1 today: Sepolia PoW faucet (pk910) works without prior mainnet funding; Base Sepolia faucets (Alchemy/Coinbase) require existing mainnet balance or CDP account. Sepolia is the default unless operator has a funded Base Sepolia signer.",
+      "actions": {
+        "attestation_tx": {
+          "supported_chains": ["sepolia", "base-sepolia"],
+          "blocked_chains": [1, 10, 56, 137, 8453, 42161, 59144, 5000],
+          "purpose": "Anchor (approver, delegationIntentHash) onchain via 0-value self-tx. NOT a swap.",
+          "signer_env": "FELLOPILOT_TESTNET_SIGNER_KEY (testnet-only — generated via scripts/harness/generate_testnet_signer.sh; persisted at ~/.fellopilot/signer.env for cross-project reuse)",
+          "gas_required": "≈21000 gas per tx; signer needs testnet ETH on the chosen chain",
+          "verified_e2e": {
+            "chain": "sepolia",
+            "tx_hash": "0xdfb197deb43ab6ec3dbc1a567824561137a7d4e811eb9275d31a7b2205f54b1a",
+            "explorer": "https://sepolia.etherscan.io/tx/0xdfb197deb43ab6ec3dbc1a567824561137a7d4e811eb9275d31a7b2205f54b1a",
+            "duration_ms": 18153,
+            "session": "retro/ralphathon-1"
+          },
+          "faucets": {
+            "sepolia": [
+              "https://sepolia-faucet.pk910.de/ (browser PoW — no mainnet required, VERIFIED WORKING)",
+              "https://www.alchemy.com/faucets/ethereum-sepolia (requires mainnet activity)",
+              "https://faucet.quicknode.com/ethereum/sepolia (requires wallet sign-in)"
+            ],
+            "base-sepolia": [
+              "https://portal.cdp.coinbase.com/products/faucet (CDP account)",
+              "https://www.alchemy.com/faucets/base-sepolia (requires mainnet activity)"
+            ]
+          }
+        }
+      }
+    },
+    "mock": {
+      "actions": {
+        "executeMock": {
+          "supported_chains": ["all-as-simulation"],
+          "contract": "txHash === undefined && explorerUrl === undefined && simulated === true",
+          "violation_detection": "scripts/harness/honesty_lint.sh (E2)"
+        }
+      }
+    }
+  },
+  "rpc_endpoints": {
+    "ethereum-mainnet": [
+      {"url": "https://ethereum-rpc.publicnode.com", "purpose": "CoinFello SIWE eth_getCode (RPC_URL_OVERRIDE candidate; replaces eth.merkle.io)", "rate_limit": "fair-use"}
+    ],
+    "base-sepolia": [
+      {"url": "https://sepolia.base.org", "purpose": "default direct_viem transport"},
+      {"url": "https://base-sepolia-rpc.publicnode.com", "purpose": "fallback"}
+    ],
+    "sepolia": [
+      {"url": "https://rpc.sepolia.org", "purpose": "default for SEPOLIA chain"}
+    ]
+  },
+  "endpoints": [
+    {"name": "coinfello-auth", "url": "https://app.coinfello.com/api/auth", "purpose": "preflight reachability ping"},
+    {"name": "base-sepolia-rpc", "url": "https://sepolia.base.org", "purpose": "direct_viem chain transport"},
+    {"name": "ethereum-rpc-publicnode", "url": "https://ethereum-rpc.publicnode.com", "purpose": "CoinFello SIWE RPC override target"}
+  ],
+  "compatibility_matrix": {
+    "M1_acceptance": "Pick coinfello if action.swap.supported_chains intersects active chain; otherwise pick direct_viem; never silently fall through to mock without SIMULATION label."
+  }
+}

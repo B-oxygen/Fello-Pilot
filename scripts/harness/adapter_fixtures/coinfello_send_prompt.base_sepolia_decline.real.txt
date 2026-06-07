@@ -1,0 +1,8 @@
+Sending prompt...
+I can't prepare that swap on Base Sepolia with the available swap flow here — Base Sepolia isn't supported by this route.
+
+If you want, I can still help in one of these ways:
+- prepare the same 1 USDC → ETH demo on a supported network,
+- help you set up a testnet-only read/demo on Base Sepolia,
+- or check whether there's a different Base Sepolia test swap path you want to use.
+

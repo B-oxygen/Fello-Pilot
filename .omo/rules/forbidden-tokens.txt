@@ -1,0 +1,18 @@
+# Forbidden tokens for the product surface (src/app/components/packages/public).
+# Format: one literal token per line. Lines starting with '#' are comments.
+# Scope: forbidden_grep.sh ONLY scans product source roots. Operational docs
+# (.omo/rules/, RETROSPECTIVE.md, scripts/harness/, capability_matrix.json, etc.)
+# are excluded by design — they are allowed (and expected) to reference these
+# tokens for the purpose of documenting the policy.
+#
+# Reasons:
+#  - "Base Sepolia": CoinFello does NOT support the Base Sepolia swap route
+#    (capability_matrix.json#providers.coinfello.actions.send_prompt evidence).
+#    The default demo chain is `sepolia` (Ethereum Sepolia, chainId 11155111).
+#    Any product-surface text that regresses the demo intent back to
+#    "Base Sepolia" is a build-time failure.
+#  - "harness": `.omo/rules/boundary.md` forbids exposing /harness or any
+#    harness wording on product pages. The literal token must never leak into
+#    customer-facing UI copy.
+Base Sepolia
+harness

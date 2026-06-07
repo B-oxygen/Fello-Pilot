@@ -1,0 +1,14 @@
+.env
+.env.*
+
+.DS_Store
+
+.omx/
+.sisyphus/
+.omo/loop-*.json
+.omo/loop-*.yaml
+
+logs/
+data/
+scripts/harness/.last-run-mode
+*.log
