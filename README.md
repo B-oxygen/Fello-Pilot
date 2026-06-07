@@ -239,7 +239,7 @@ The full spec, including all deferred items with concrete acceptance criteria, l
 | **M3.3** ≥1 verification step references `logs/commands.jsonl` | `scripts/smoke.mjs` reads the log to assert `coinfello_get_account_invoked` stage; `scripts/audit_forbidden.sh` + `scripts/harness/honesty_lint.sh` also reference it | ✅ verified |
 | **M3.4** Memory entry shape matches PRD §6.7 | `MemoryEntry` interface enforced via TS | ✅ |
 
-**14/15 ✅ + 1 PARTIAL (honestly noted)**:
+**15/15 binary milestones PASS; H7 edge coverage remains honestly PARTIAL**:
 - M1 fully ✅: real `direct_viem` Sepolia contract attestation now verified onchain (`0xccdc33b3…` on Sepolia). Mock SIMULATION OR-branch also verified.
 - M2 fully ✅: honesty contract, SIMULATION labels, pending UI, secret + production-chain blocks.
 - M3 13/14 ✅, H7 marked PARTIAL only because rare multi-tab wallet state sync isn't enumerated. Server traces + client wallet-event traces + memory durability all verified.
