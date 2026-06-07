@@ -60,9 +60,11 @@ async function preSeedMemory() {
     method: "eth_signTypedData_v4",
     message: built.message,
     personalSignMessage: built.personalSignMessage,
+    delegationIntentHash: built.hash,
   });
-  await post("/api/execute", null);
-  console.log("[pre-seed] memory populated with simulated_attestation");
+  const exec = await post("/api/execute", null);
+  const variant = exec?.receipt?.variant ?? "unknown";
+  console.log(`[pre-seed] memory populated with variant=${variant} (adapter=${exec?.receipt?.adapter})`);
 }
 
 const browser = await chromium.launch();
@@ -136,11 +138,30 @@ await page.waitForFunction(
   },
   { timeout: 6000 },
 );
-await page.waitForTimeout(500);
+await page.waitForFunction(
+  () => document.querySelectorAll('[data-testid="memory-entry"]').length >= 1,
+  { timeout: 6000 },
+);
+await page.waitForTimeout(1500);
 await page.screenshot({
   path: pathOf("06-memory-panel.png"),
   clip: { x: 960, y: 0, width: 320, height: 900 },
 });
+
+console.log("[7/7] full safe flow with real_attestation receipt (extra)");
+await page.goto(URL, { waitUntil: "networkidle" });
+await preSeedMemory();
+await page.reload({ waitUntil: "networkidle" });
+await page.waitForSelector('[data-testid="memory-panel"]', { timeout: 6000 });
+await page.waitForFunction(
+  () => {
+    const entries = Array.from(document.querySelectorAll('[data-testid="memory-entry"]'));
+    return entries.some((e) => e.getAttribute("data-variant") === "real_attestation");
+  },
+  { timeout: 8000 },
+).catch(() => null);
+await page.waitForTimeout(1200);
+await page.screenshot({ path: pathOf("07-real-attestation-memory.png"), fullPage: false });
 
 await browser.close();
 console.log("done:", OUT);

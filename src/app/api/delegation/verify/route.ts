@@ -21,6 +21,7 @@ export async function POST(request: Request) {
       proposalId: string;
     };
     personalSignMessage?: string;
+    delegationIntentHash?: string;
   };
 
   let valid = false;
@@ -43,6 +44,11 @@ export async function POST(request: Request) {
     valid = false;
   }
 
+  const intentHash =
+    body.delegationIntentHash && body.delegationIntentHash.startsWith("0x")
+      ? (body.delegationIntentHash as Hex)
+      : undefined;
+
   const state: DelegationState = {
     proposalId: body.proposalId,
     status: valid ? "approved" : "rejected",
@@ -64,7 +70,7 @@ export async function POST(request: Request) {
     },
     approver: body.approver,
     chainId: body.chainId,
-    delegationIntentHash: undefined,
+    delegationIntentHash: intentHash,
     signatureMethod: body.method,
     signedAt: new Date().toISOString(),
     signatureValid: valid,
@@ -77,6 +83,7 @@ export async function POST(request: Request) {
     proposalId: body.proposalId,
     signatureMethod: body.method,
     valid,
+    intentHashPresent: Boolean(intentHash),
   });
 
   return NextResponse.json({ valid, state });

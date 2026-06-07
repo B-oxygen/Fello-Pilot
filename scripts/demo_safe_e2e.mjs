@@ -89,6 +89,7 @@ const verifyRes = await post("/api/delegation/verify", {
   method: "eth_signTypedData_v4",
   message: built.message,
   personalSignMessage: built.personalSignMessage,
+  delegationIntentHash: built.hash,
 });
 console.log("valid:", verifyRes.json.valid);
 console.log("delegation status:", verifyRes.json.state.status);
@@ -117,19 +118,57 @@ if (latest) {
 }
 
 console.log("\n=== Honesty assertions for FULL SAFE e2e ===");
-const checks = [
-  { name: "receipt.variant === simulated_attestation", pass: receipt.variant === "simulated_attestation" },
-  { name: "receipt.simulated === true", pass: receipt.simulated === true },
-  { name: "receipt.txHash undefined", pass: receipt.txHash === undefined },
-  { name: "receipt.explorerUrl undefined", pass: receipt.explorerUrl === undefined },
-  { name: "receipt.adapter === mock", pass: receipt.adapter === "mock" },
-  { name: "receipt.runtimeMode === SIMULATION", pass: receipt.runtimeMode === "SIMULATION" },
+const isReal = receipt.adapter === "direct_viem" && receipt.simulated === false;
+const isSim = receipt.adapter === "mock" && receipt.simulated === true;
+const sharedChecks = [
   { name: "memory entry recorded", pass: Boolean(latest) },
   {
     name: "memory.delegation.signed === true",
     pass: latest?.delegation.signed === true,
   },
+  {
+    name: "honesty: never both simulated:true AND a 0x.. txHash",
+    pass: !(receipt.simulated === true && /^0x[0-9a-f]{64}$/i.test(receipt.txHash ?? "")),
+  },
 ];
+let checks;
+if (isReal) {
+  checks = [
+    { name: "receipt.variant === real_attestation", pass: receipt.variant === "real_attestation" },
+    { name: "receipt.simulated === false", pass: receipt.simulated === false },
+    {
+      name: "receipt.txHash is 0x[a-f0-9]{64}",
+      pass: typeof receipt.txHash === "string" && /^0x[a-f0-9]{64}$/i.test(receipt.txHash),
+    },
+    {
+      name: "receipt.explorerUrl points to sepolia.etherscan.io",
+      pass:
+        typeof receipt.explorerUrl === "string" &&
+        receipt.explorerUrl.startsWith("https://sepolia.etherscan.io/tx/0x"),
+    },
+    { name: "receipt.adapter === direct_viem", pass: receipt.adapter === "direct_viem" },
+    { name: "receipt.runtimeMode === LIVE_TESTNET", pass: receipt.runtimeMode === "LIVE_TESTNET" },
+    ...sharedChecks,
+  ];
+} else if (isSim) {
+  checks = [
+    { name: "receipt.variant === simulated_attestation", pass: receipt.variant === "simulated_attestation" },
+    { name: "receipt.simulated === true", pass: receipt.simulated === true },
+    { name: "receipt.txHash undefined", pass: receipt.txHash === undefined },
+    { name: "receipt.explorerUrl undefined", pass: receipt.explorerUrl === undefined },
+    { name: "receipt.adapter === mock", pass: receipt.adapter === "mock" },
+    { name: "receipt.runtimeMode === SIMULATION", pass: receipt.runtimeMode === "SIMULATION" },
+    ...sharedChecks,
+  ];
+} else {
+  checks = [
+    {
+      name: `unexpected adapter/simulated combination (adapter=${receipt.adapter}, simulated=${receipt.simulated})`,
+      pass: false,
+    },
+    ...sharedChecks,
+  ];
+}
 let fails = 0;
 for (const c of checks) {
   console.log(c.pass ? "  PASS " : "  FAIL ", c.name);

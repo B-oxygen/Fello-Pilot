@@ -378,6 +378,7 @@ export default function FelloPilotPage() {
             method,
             message: builtIntent.message,
             personalSignMessage: builtIntent.personalSignMessage,
+            delegationIntentHash: builtIntent.hash,
           }),
         });
         verifyResult = await res.json();
