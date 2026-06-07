@@ -1,23 +1,54 @@
 import { test, expect } from "@playwright/test";
 import {
   appendFileSync,
-  readFileSync,
   mkdirSync,
   existsSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 
-// Covers PRD M3.2 + AC-7.3: memory MUST persist across reloads. We test the
-// honest property: the memory panel reads from a durable on-disk store
-// (data/memory.jsonl) rather than in-process state. We seed a sentinel
-// entry directly via file append (the same store the API writes to), reload
-// the page, and assert the entry comes back. This proves the durability
-// property; a real dev-server bounce verifies the same in
-// scripts/verify_log_coverage.sh + manual ops.
-test("memory persists across page reload (durable store, not in-process)", async ({
-  page,
-  request,
-}) => {
+// Covers PRD M3.2 + AC-7.3 (docs/PRD.md line 711 + 448): memory MUST persist
+// across a dev-server kill+restart, proving the store is on disk rather than
+// in process memory. We spawn an isolated dev server on port 3097 with
+// FELLOPILOT_ADAPTER="" and OPENAI_API_KEY="" so the main dev server on :3000
+// stays untouched. The flow: seed a sentinel into data/memory.jsonl, verify
+// via the isolated server's /api/memory, KILL the isolated server, RESTART
+// it, then verify the sentinel is still returned by the new process.
+
+const ISO_PORT = 3097;
+const ISO_BASE = `http://localhost:${ISO_PORT}`;
+
+async function waitReady(base: string, maxMs = 60_000) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    try {
+      const res = await fetch(`${base}/`);
+      if (res.status === 200) return true;
+    } catch {
+      /* keep waiting */
+    }
+    await sleep(500);
+  }
+  return false;
+}
+
+function spawnIsolatedDevServer() {
+  const env = {
+    ...process.env,
+    OPENAI_API_KEY: "",
+    FELLOPILOT_ADAPTER: "",
+  };
+  return spawn("npx", ["next", "dev", "-p", String(ISO_PORT)], {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: false,
+  });
+}
+
+test("memory persists across actual dev-server kill+restart (isolated)", async ({}, testInfo) => {
+  testInfo.setTimeout(120_000);
+
   const memoryPath = resolve(process.cwd(), "data/memory.jsonl");
   const dataDir = resolve(process.cwd(), "data");
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
@@ -49,26 +80,27 @@ test("memory persists across page reload (durable store, not in-process)", async
   };
   appendFileSync(memoryPath, `${JSON.stringify(sentinelEntry)}\n`, "utf8");
 
-  const apiResp = await request.get("/api/memory");
-  const body = await apiResp.json();
-  const found = (body.entries as Array<Record<string, unknown>>).some(
-    (e) => e.proposalId === sentinelId,
-  );
-  expect(found).toBeTruthy();
+  let child = spawnIsolatedDevServer();
+  try {
+    expect(await waitReady(ISO_BASE)).toBe(true);
+    const r1 = await fetch(`${ISO_BASE}/api/memory`);
+    const j1 = (await r1.json()) as { entries: Array<{ proposalId: string }> };
+    expect(j1.entries.some((e) => e.proposalId === sentinelId)).toBe(true);
 
-  await page.goto("/");
-  await page.reload();
+    child.kill("SIGKILL");
+    await sleep(1500);
 
-  const onDisk = readFileSync(memoryPath, "utf8")
-    .split("\n")
-    .filter((l) => l.trim().length > 0);
-  const stillThere = onDisk.some((line) => {
+    child = spawnIsolatedDevServer();
+    expect(await waitReady(ISO_BASE)).toBe(true);
+    const r2 = await fetch(`${ISO_BASE}/api/memory`);
+    const j2 = (await r2.json()) as { entries: Array<{ proposalId: string }> };
+    expect(j2.entries.some((e) => e.proposalId === sentinelId)).toBe(true);
+  } finally {
     try {
-      const j = JSON.parse(line) as { proposalId?: string };
-      return j.proposalId === sentinelId;
+      child.kill("SIGKILL");
     } catch {
-      return false;
+      /* ignore */
     }
-  });
-  expect(stillThere).toBeTruthy();
+    await sleep(500);
+  }
 });

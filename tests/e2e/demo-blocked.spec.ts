@@ -7,9 +7,16 @@ test("BLOCKED demo: risk gate rejects mainnet intent without exposing sign butto
   page,
   request,
 }) => {
+  const beforeResp = await request.get("/api/memory");
+  const before = (await beforeResp.json()) as {
+    entries: Array<Record<string, unknown>>;
+  };
+  const beforeIds = new Set(
+    (before.entries ?? []).map((e) => e.proposalId as string),
+  );
+
   await page.goto("/");
   await expect(page.getByTestId("seed-prompt-unsafe")).toBeVisible();
-
   await page.getByTestId("seed-prompt-unsafe").click();
 
   await expect(page.getByTestId("chat-message-user")).toBeVisible();
@@ -26,6 +33,8 @@ test("BLOCKED demo: risk gate rejects mainnet intent without exposing sign butto
   const signButton = page.locator('[data-testid="sign-button"]');
   await expect(signButton).toHaveCount(0);
 
+  // Poll until a NEW blocked entry appears (proposalId not in pre-test set).
+  // Without this we'd accept a stale blocked entry from a prior run.
   await expect
     .poll(
       async () => {
@@ -33,10 +42,15 @@ test("BLOCKED demo: risk gate rejects mainnet intent without exposing sign butto
         const body = (await resp.json()) as {
           entries: Array<Record<string, unknown>>;
         };
-        return (body.entries ?? []).some((e) => {
+        const newBlocked = (body.entries ?? []).find((e) => {
           const exec = e.execution as Record<string, unknown> | undefined;
-          return exec?.variant === "blocked";
+          return (
+            exec?.variant === "blocked" &&
+            typeof e.proposalId === "string" &&
+            !beforeIds.has(e.proposalId)
+          );
         });
+        return Boolean(newBlocked);
       },
       { timeout: 15_000, intervals: [500, 1000, 2000] },
     )

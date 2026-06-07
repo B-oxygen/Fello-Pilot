@@ -34,9 +34,36 @@ if [ "$delta" -lt 7 ]; then
   exit 1
 fi
 
-stages_seen=$(tail -n "$delta" "$LOG" | grep -oE '"stage":"[^"]+"' | sort -u | wc -l)
+# PRD M3.1: each of the 7 canonical SAFE-flow stages MUST appear in the new
+# delta. Without this check, the script could pass when 7 duplicates of
+# `intent_received` are logged but no `delegation_signed` ever fires.
+REQUIRED_STAGES=(
+  "intent_received"
+  "proposal_emitted"
+  "risk_evaluated"
+  "delegation_intent_built"
+  "delegation_signed"
+  "execution_completed"
+  "memory_recorded"
+)
+
+new_lines=$(tail -n "$delta" "$LOG")
+missing=()
+for stage in "${REQUIRED_STAGES[@]}"; do
+  if ! printf '%s\n' "$new_lines" | grep -q "\"stage\":\"$stage\""; then
+    missing+=("$stage")
+  fi
+done
+
+if [ "${#missing[@]}" -ne 0 ]; then
+  echo "[verify_log_coverage] FAIL: SAFE_DEMO delta missing required stages:"
+  printf '    - %s\n' "${missing[@]}"
+  exit 1
+fi
+
+stages_seen=$(printf '%s\n' "$new_lines" | grep -oE '"stage":"[^"]+"' | sort -u | wc -l)
 stages_seen=${stages_seen// /}
-echo "[verify_log_coverage] distinct stages emitted by this run: $stages_seen"
+echo "[verify_log_coverage] all 7 required stages present; distinct stages this run: $stages_seen"
 
 echo "[verify_log_coverage] OK"
 exit 0

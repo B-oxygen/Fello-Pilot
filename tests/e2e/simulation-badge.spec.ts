@@ -1,14 +1,15 @@
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-// Covers PRD M2.1: a SIMULATION receipt MUST render a visible
-// [data-testid="simulation-badge"] that is non-dismissable. Strategy: inject
-// the production `.sim-badge` class (from src/app/globals.css line 390) into
-// the loaded app page and read its computed style. This proves the CSS
-// invariant (pointer-events:none, user-select:none) on the EXACT class the
-// SimulationBadge component renders. The component mount-on-simulated-receipt
-// guarantee is enforced statically in ReceiptCard.tsx
-// (`{isSimulated && <SimulationBadge />}`) and exercised at runtime by
-// scripts/demo_safe_e2e.mjs under the mock adapter.
+// Covers PRD M2.1 with TWO complementary assertions:
+//  (a) CSS contract: inject the production .sim-badge class into the loaded
+//      app page and read computed style. Proves pointer-events:none,
+//      user-select:none, the badge is visible, and the label is "SIMULATION".
+//  (b) Component-mount contract: static-read src/components/cards/
+//      ReceiptCard.tsx and assert it renders <SimulationBadge /> when
+//      receipt.simulated is true. Without this, a future refactor that
+//      removed the SimulationBadge mount would slip past test (a).
 test("simulation-badge CSS contract: visible + non-dismissable (pointer-events:none)", async ({
   page,
 }) => {
@@ -35,4 +36,14 @@ test("simulation-badge CSS contract: visible + non-dismissable (pointer-events:n
   expect(result.textContent).toBe("SIMULATION");
 
   await expect(page.getByTestId("simulation-badge").first()).toBeVisible();
+
+  const receiptCardSrc = readFileSync(
+    resolve(process.cwd(), "src/components/cards/ReceiptCard.tsx"),
+    "utf8",
+  );
+  expect(receiptCardSrc).toMatch(
+    /\{\s*isSimulated\s*&&\s*<SimulationBadge\s*\/>\s*\}/,
+  );
+  expect(receiptCardSrc).toMatch(/data-testid="chat-card-receipt"/);
+  expect(receiptCardSrc).toMatch(/data-simulated=\{String\(receipt\.simulated\)\}/);
 });
