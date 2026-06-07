@@ -220,6 +220,100 @@ console.log(
   }),
 );
 
+console.log("\n=== Test 8: intent-hash anchor bypass refused — client cannot inject a stale/forged delegationIntentHash ===");
+// Sign Q's typed-data honestly. Submit verify with delegationIntentHash set
+// to P's hash. Server must EITHER reject OR ignore the client value and
+// persist Q's actual hash. Either way DelegationState.delegationIntentHash
+// must NOT equal builtP.hash.
+const propR = (await post("/api/proposal", { intent: ONESHOT_INTENT })).json
+  .proposal;
+const builtR = (
+  await post("/api/delegation/build", {
+    proposal: propR,
+    approver: account.address,
+    chainId: CHAIN_ID,
+  })
+).json;
+const sigR_typed = await account.signTypedData({
+  domain: builtR.domain,
+  types: builtR.types,
+  primaryType: builtR.primaryType,
+  message: {
+    approver: builtR.message.approver,
+    action: builtR.message.action,
+    tokenAllowlist: builtR.message.tokenAllowlist,
+    spendingCap: BigInt(builtR.message.spendingCap),
+    expiry: BigInt(builtR.message.expiry),
+    proposalId: builtR.message.proposalId,
+  },
+});
+const intentHashBypass = await post("/api/delegation/verify", {
+  proposalId: propR.id,
+  approver: account.address,
+  chainId: CHAIN_ID,
+  signature: sigR_typed,
+  method: "eth_signTypedData_v4",
+  message: builtR.message,
+  personalSignMessage: builtR.personalSignMessage,
+  delegationIntentHash: builtP.hash,
+});
+console.log(
+  "  /api/delegation/verify with delegationIntentHash=builtP.hash (different proposal):",
+  JSON.stringify({
+    valid: intentHashBypass.json.valid,
+    intentHashBindingValid: intentHashBypass.json.intentHashBindingValid,
+    state_intentHash: intentHashBypass.json.state?.delegationIntentHash,
+    builtP_hash: builtP.hash,
+    builtR_hash: builtR.hash,
+  }),
+);
+
+console.log("\n=== Test 9: approver-mismatch refused — body.approver != body.message.approver ===");
+// Construct a verify body where body.approver and body.message.approver disagree.
+// The signed bytes were over body.message.approver, but DelegationState would
+// record body.approver. Must refuse.
+const otherAccount = privateKeyToAccount(generatePrivateKey());
+const propS = (await post("/api/proposal", { intent: ONESHOT_INTENT })).json
+  .proposal;
+const builtS = (
+  await post("/api/delegation/build", {
+    proposal: propS,
+    approver: account.address,
+    chainId: CHAIN_ID,
+  })
+).json;
+const sigS = await account.signTypedData({
+  domain: builtS.domain,
+  types: builtS.types,
+  primaryType: builtS.primaryType,
+  message: {
+    approver: builtS.message.approver,
+    action: builtS.message.action,
+    tokenAllowlist: builtS.message.tokenAllowlist,
+    spendingCap: BigInt(builtS.message.spendingCap),
+    expiry: BigInt(builtS.message.expiry),
+    proposalId: builtS.message.proposalId,
+  },
+});
+const approverMismatch = await post("/api/delegation/verify", {
+  proposalId: propS.id,
+  approver: otherAccount.address,
+  chainId: CHAIN_ID,
+  signature: sigS,
+  method: "eth_signTypedData_v4",
+  message: builtS.message,
+  personalSignMessage: builtS.personalSignMessage,
+  delegationIntentHash: builtS.hash,
+});
+console.log(
+  "  /api/delegation/verify with body.approver != body.message.approver:",
+  JSON.stringify({
+    valid: approverMismatch.json.valid,
+    approverBindingValid: approverMismatch.json.approverBindingValid,
+    state_status: approverMismatch.json.state?.status,
+  }),
+);
+
 console.log("\n=== Assertions ===");
 const checks = [
   {
@@ -274,6 +368,20 @@ const checks = [
       personalSignBypassAttempt.json.personalSignBindingValid === false &&
       personalSignBypassAttempt.json.valid === false &&
       personalSignBypassAttempt.json.state?.status === "rejected",
+  },
+  {
+    name: "intent-hash anchor bypass refused: state.delegationIntentHash !== client-supplied forged value",
+    pass:
+      intentHashBypass.json.intentHashBindingValid === false &&
+      intentHashBypass.json.valid === false &&
+      intentHashBypass.json.state?.delegationIntentHash !== builtP.hash,
+  },
+  {
+    name: "approver-mismatch refused: body.approver != body.message.approver",
+    pass:
+      approverMismatch.json.approverBindingValid === false &&
+      approverMismatch.json.valid === false &&
+      approverMismatch.json.state?.status === "rejected",
   },
 ];
 let fails = 0;

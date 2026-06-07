@@ -31,18 +31,54 @@ export async function POST(request: Request) {
 
   // H5 invariant (PRD §2): the wrapper body.proposalId MUST correspond to the
   // signed message.proposalId (which is keccak256(toBytes(proposalIdString))).
-  // Without this a client can sign typed data for proposal A while submitting
-  // body.proposalId=B, and the server would write an "approved" DelegationState
-  // for B. Refuse if they don't match before any signature verification work.
   const expectedHashedProposalId = keccak256(toBytes(body.proposalId));
   const proposalIdBindingValid =
     typeof body.message?.proposalId === "string" &&
     body.message.proposalId.toLowerCase() ===
       expectedHashedProposalId.toLowerCase();
 
+  // H5 invariant: the wrapper body.approver MUST equal body.message.approver.
+  // The signed typed-data binds approver inside the message; downstream code
+  // (DelegationState.approver, directViem calldata) uses body.approver. If
+  // they diverge we'd anchor a different EOA than the one who signed the
+  // intent bytes — inconsistent attestation.
+  const approverBindingValid =
+    typeof body.approver === "string" &&
+    typeof body.message?.approver === "string" &&
+    body.approver.toLowerCase() === body.message.approver.toLowerCase();
+
+  // H5 invariant: the delegationIntentHash that will be persisted in
+  // DelegationState (and later anchored onchain by direct_viem) MUST be the
+  // server-computed hash of (body.message, body.chainId). Otherwise a client
+  // can sign valid typed data for the right proposal but submit a stale or
+  // adversarial intent hash that direct_viem then anchors as if it were the
+  // signed intent.
+  let expectedIntentHash: Hex | undefined;
+  let intentHashBindingValid = true;
+  if (proposalIdBindingValid && approverBindingValid) {
+    try {
+      const reconstructedForHash = deserializeMessage(body.message);
+      expectedIntentHash = hashDelegationMessage({
+        message: reconstructedForHash,
+        chainId: body.chainId,
+      });
+      if (body.delegationIntentHash) {
+        intentHashBindingValid =
+          body.delegationIntentHash.toLowerCase() ===
+          expectedIntentHash.toLowerCase();
+      }
+    } catch {
+      intentHashBindingValid = false;
+    }
+  }
+
   let valid = false;
   let personalSignBindingValid: boolean | undefined;
-  if (proposalIdBindingValid) {
+  if (
+    proposalIdBindingValid &&
+    approverBindingValid &&
+    intentHashBindingValid
+  ) {
     try {
       if (body.method === "eth_signTypedData_v4") {
         valid = await verifyDelegationSignature({
@@ -56,16 +92,12 @@ export async function POST(request: Request) {
         // actually signed (body.personalSignMessage) MUST be the canonical
         // string derived from body.message + body.chainId. Otherwise a client
         // could sign proposal A's personalSignMessage and submit it under
-        // body.message=B / body.proposalId=B — bypassing the typed-data bind.
+        // body.message=B — bypassing the typed-data bind.
         const reconstructedMessage = deserializeMessage(body.message);
-        const expectedIntentHash = hashDelegationMessage({
-          message: reconstructedMessage,
-          chainId: body.chainId,
-        });
         const expectedPersonalSign = formatPersonalSignMessage({
           message: reconstructedMessage,
           chainId: body.chainId,
-          intentHash: expectedIntentHash,
+          intentHash: expectedIntentHash!,
         });
         personalSignBindingValid =
           body.personalSignMessage === expectedPersonalSign;
@@ -82,10 +114,10 @@ export async function POST(request: Request) {
     }
   }
 
-  const intentHash =
-    body.delegationIntentHash && body.delegationIntentHash.startsWith("0x")
-      ? (body.delegationIntentHash as Hex)
-      : undefined;
+  // Persist the SERVER-computed intent hash, never the client-supplied one.
+  // If the server couldn't compute it (proposalId or approver bind failed
+  // upstream) leave it undefined so direct_viem refuses to anchor.
+  const intentHash: Hex | undefined = valid ? expectedIntentHash : undefined;
 
   const state: DelegationState = {
     proposalId: body.proposalId,
@@ -102,9 +134,13 @@ export async function POST(request: Request) {
       ? "Delegation signature verified."
       : !proposalIdBindingValid
         ? `Refused: body.proposalId (${body.proposalId}) does not bind the signed message.proposalId hash.`
-        : personalSignBindingValid === false
-          ? "Refused: body.personalSignMessage does not match the canonical string derived from body.message + chainId."
-          : "Delegation signature mismatch.",
+        : !approverBindingValid
+          ? `Refused: body.approver (${body.approver}) does not equal body.message.approver (${body.message?.approver}).`
+          : !intentHashBindingValid
+            ? `Refused: body.delegationIntentHash (${body.delegationIntentHash}) does not equal the server-computed hash (${expectedIntentHash}) of body.message + chainId.`
+            : personalSignBindingValid === false
+              ? "Refused: body.personalSignMessage does not match the canonical string derived from body.message + chainId."
+              : "Delegation signature mismatch.",
     updatedAt: new Date().toISOString(),
     connectedWallet: {
       eoaAddress: body.approver,
@@ -128,14 +164,19 @@ export async function POST(request: Request) {
     signatureMethod: body.method,
     valid,
     proposalIdBindingValid,
+    approverBindingValid,
+    intentHashBindingValid,
     personalSignBindingValid: personalSignBindingValid ?? null,
-    intentHashPresent: Boolean(intentHash),
+    intentHashServerComputed: Boolean(expectedIntentHash),
+    intentHashPersisted: Boolean(intentHash),
   });
 
   return NextResponse.json({
     valid,
     state,
     proposalIdBindingValid,
+    approverBindingValid,
+    intentHashBindingValid,
     personalSignBindingValid: personalSignBindingValid ?? null,
   });
 }
