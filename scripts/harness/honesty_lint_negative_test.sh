@@ -8,38 +8,54 @@ HARNESS_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HARNESS_ROOT"
 
 LINT="bash scripts/harness/honesty_lint.sh"
-DISHONEST=scripts/harness/adapter_fixtures/dishonest_receipt.json
-HONEST=scripts/harness/adapter_fixtures/honest_simulated_receipt.json
 
-echo "=== Negative case: dishonest fixture (simulated:true + fake txHash) ==="
-echo "  expecting: honesty_lint.sh exit != 0"
-set +e
-$LINT "$DISHONEST" >/tmp/honesty_neg.out 2>&1
-status_dishonest=$?
-set -e
-cat /tmp/honesty_neg.out
-echo "  actual exit: $status_dishonest"
-if [ "$status_dishonest" -eq 0 ]; then
-  echo "FAIL: honesty_lint.sh accepted the dishonest fixture — H1 invariant is NOT enforced."
-  exit 1
-fi
-echo "  PASS"
+assert_reject() {
+  local fixture="$1"
+  local label="$2"
+  echo "=== Negative case: $label ==="
+  echo "  expecting: honesty_lint.sh $fixture exit != 0"
+  set +e
+  $LINT "$fixture" >/tmp/honesty_neg.out 2>&1
+  local ec=$?
+  set -e
+  cat /tmp/honesty_neg.out
+  echo "  actual exit: $ec"
+  if [ "$ec" -eq 0 ]; then
+    echo "FAIL: honesty_lint.sh accepted $fixture — H1 invariant is NOT enforced for this shape."
+    exit 1
+  fi
+  echo "  PASS"
+  echo
+}
 
-echo
-echo "=== Positive control: honest SIMULATION fixture (simulated:true, no txHash) ==="
-echo "  expecting: honesty_lint.sh exit == 0"
-set +e
-$LINT "$HONEST" >/tmp/honesty_pos.out 2>&1
-status_honest=$?
-set -e
-cat /tmp/honesty_pos.out
-echo "  actual exit: $status_honest"
-if [ "$status_honest" -ne 0 ]; then
-  echo "FAIL: honesty_lint.sh rejected an honest fixture — false positive."
-  exit 1
-fi
-echo "  PASS"
+assert_accept() {
+  local fixture="$1"
+  local label="$2"
+  echo "=== Positive control: $label ==="
+  echo "  expecting: honesty_lint.sh $fixture exit == 0"
+  set +e
+  $LINT "$fixture" >/tmp/honesty_pos.out 2>&1
+  local ec=$?
+  set -e
+  cat /tmp/honesty_pos.out
+  echo "  actual exit: $ec"
+  if [ "$ec" -ne 0 ]; then
+    echo "FAIL: honesty_lint.sh rejected $fixture — false positive."
+    exit 1
+  fi
+  echo "  PASS"
+  echo
+}
 
-echo
-echo "=== honesty_lint_negative_test: ALL PASS (AC-6.3) ==="
+assert_reject scripts/harness/adapter_fixtures/dishonest_receipt.json \
+  "simulated:true + fake 0x... txHash + fake explorerUrl"
+assert_reject scripts/harness/adapter_fixtures/dishonest_explorer_only.json \
+  "simulated:true + explorerUrl only (no txHash)"
+assert_reject scripts/harness/adapter_fixtures/dishonest_short_txhash.json \
+  "simulated:true + txHash:'0x' (no hex body)"
+
+assert_accept scripts/harness/adapter_fixtures/honest_simulated_receipt.json \
+  "simulated:true + txHash absent + explorerUrl absent"
+
+echo "=== honesty_lint_negative_test: ALL PASS (AC-6.3, includes edge cases) ==="
 exit 0

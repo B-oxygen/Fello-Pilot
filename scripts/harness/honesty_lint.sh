@@ -13,6 +13,13 @@ fail=0
 # H1 invariant check on receipt-shaped JSON fixtures.
 #   Usage: honesty_lint.sh [path-to-receipt.json ...]
 #   With no args, falls back to data/execution_receipt.json if it exists.
+# Rule: simulated:true => txHash MUST be absent/null AND explorerUrl MUST be
+# absent/null. ANY non-null value (even "0x", even an empty string, even
+# arbitrary text) is a violation. Catches:
+#   - simulated:true + fake 0x... hash
+#   - simulated:true + explorerUrl only
+#   - simulated:true + txHash:"0x"  (short / empty hex)
+#   - simulated:true + txHash:""    (empty string)
 check_receipt_fixture() {
   local path="$1"
   if [ ! -f "$path" ]; then
@@ -22,12 +29,27 @@ check_receipt_fixture() {
     echo "[honesty_lint] WARN: jq not available, skipping H1 receipt invariant on $path"
     return 0
   fi
-  local sim tx
-  sim=$(jq -r '.simulated // false' "$path" 2>/dev/null || echo "")
-  tx=$(jq -r '.txHash // empty' "$path" 2>/dev/null || echo "")
-  if [ "$sim" = "true" ] && [ -n "$tx" ] && [[ "$tx" =~ ^0x[0-9a-fA-F]+ ]]; then
-    echo "[honesty_lint] FAIL: H1 invariant violated in $path — simulated:true with populated txHash=$tx"
+  # Validate JSON parses; refuse silently fail-open on malformed fixtures.
+  if ! jq empty "$path" 2>/dev/null; then
+    echo "[honesty_lint] FAIL: $path is not valid JSON"
     fail=1
+    return 0
+  fi
+  local sim has_tx has_exp tx exp
+  sim=$(jq -r '.simulated // false' "$path")
+  has_tx=$(jq -r '(.txHash != null) and (.txHash != "")' "$path")
+  has_exp=$(jq -r '(.explorerUrl != null) and (.explorerUrl != "")' "$path")
+  tx=$(jq -r '.txHash // "<absent>"' "$path")
+  exp=$(jq -r '.explorerUrl // "<absent>"' "$path")
+  if [ "$sim" = "true" ]; then
+    if [ "$has_tx" = "true" ]; then
+      echo "[honesty_lint] FAIL: H1 invariant violated in $path — simulated:true with non-null/non-empty txHash=$tx"
+      fail=1
+    fi
+    if [ "$has_exp" = "true" ]; then
+      echo "[honesty_lint] FAIL: H1 invariant violated in $path — simulated:true with non-null/non-empty explorerUrl=$exp"
+      fail=1
+    fi
   fi
 }
 

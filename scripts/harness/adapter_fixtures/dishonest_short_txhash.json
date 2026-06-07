@@ -1,0 +1,13 @@
+{
+  "_doc": "Edge-case dishonest fixture for PRD AC-6.3: simulated:true with txHash:'0x' (just the prefix, no hex chars). Oracle round-7 caught the prior H1 check accepting this since the regex required at least one hex char after 0x. honesty_lint.sh MUST reject (exit != 0).",
+  "proposalId": "prop_NEGATIVE_SHORT_TXHASH",
+  "traceId": "trace_dishonest_short",
+  "status": "MOCK_EXECUTED",
+  "variant": "simulated_attestation",
+  "adapter": "mock",
+  "runtimeMode": "SIMULATION",
+  "simulated": true,
+  "message": "DISHONEST EDGE CASE — txHash is just '0x', no hex body. H1 still violated.",
+  "timestamp": "2026-06-07T00:00:00.000Z",
+  "txHash": "0x"
+}

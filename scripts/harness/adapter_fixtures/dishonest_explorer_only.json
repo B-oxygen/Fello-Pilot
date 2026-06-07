@@ -1,0 +1,13 @@
+{
+  "_doc": "Edge-case dishonest fixture for PRD AC-6.3: simulated:true with explorerUrl populated but txHash absent. Oracle round-7 caught the prior H1 check fail-opening on this shape. honesty_lint.sh MUST reject (exit != 0).",
+  "proposalId": "prop_NEGATIVE_EXPLORER_ONLY",
+  "traceId": "trace_dishonest_explorer",
+  "status": "MOCK_EXECUTED",
+  "variant": "simulated_attestation",
+  "adapter": "mock",
+  "runtimeMode": "SIMULATION",
+  "simulated": true,
+  "message": "DISHONEST EDGE CASE — explorerUrl present without txHash. H1 still violated.",
+  "timestamp": "2026-06-07T00:00:00.000Z",
+  "explorerUrl": "https://sepolia.etherscan.io/tx/0xphantom"
+}
