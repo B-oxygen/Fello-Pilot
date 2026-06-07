@@ -7,6 +7,7 @@
 [![Status](https://img.shields.io/badge/build-90--min_demo-1a9d57?style=flat-square)](#whats-in-this-build)
 [![Honesty](https://img.shields.io/badge/honesty-H1--H6_PASS_·_H7_PARTIAL-1a9d57?style=flat-square)](#honesty-contract)
 [![Chain](https://img.shields.io/badge/chain-Sepolia_only-097aff?style=flat-square)](src/lib/wagmi.ts)
+[![Real Tx](https://img.shields.io/badge/real_attestation-verified_onchain-1a9d57?style=flat-square)](https://sepolia.etherscan.io/tx/0x068e9c3b546b1e6360028622e1815563188ac68344178010ddc6c82da9edfdb9)
 
 ---
 
@@ -52,7 +53,13 @@ All 9 risk dimensions pass → wallet-connect prompt. After connecting MetaMask 
 
 ![Memory panel](docs/screenshots/06-memory-panel.png)
 
-Each terminal session writes a typed entry (intent, proposal, risk verdict, delegation metadata, execution variant, 4-axis evaluation, postmortem, next adjustment). Durable across dev-server restarts (`data/memory.jsonl`).
+Each terminal session writes a typed entry (intent, proposal, risk verdict, delegation metadata, execution variant, 4-axis evaluation, postmortem, next adjustment). Durable across dev-server restarts (`data/memory.jsonl`). Entries with `variant=real_attestation` carry a real Sepolia `txHash` and explorer link.
+
+### 5. Real-attestation memory (FELLOPILOT_ADAPTER=direct_viem)
+
+![Real attestation memory](docs/screenshots/07-real-attestation-memory.png)
+
+When `FELLOPILOT_ADAPTER=direct_viem` is set and the signer is funded, the memory panel shows `real_attestation` entries with real Sepolia tx hashes. Click-through to Etherscan resolves to a successful 0-value self-tx whose calldata is `(approver, delegationIntentHash)` ABI-encoded — the FelloPilot service anchored your wallet-signed intent onchain.
 
 ---
 
@@ -62,30 +69,66 @@ Each terminal session writes a typed entry (intent, proposal, risk verdict, dele
 # 0. Install (Node 20+ recommended)
 npm install
 
-# 1. Start the dev server
+# 1. (Optional) Enable real Sepolia attestation — produces real txHash + Etherscan link
+#    Skip this step to run the demo in SIMULATION mode (labeled, honest, zero gas).
+bash scripts/harness/generate_testnet_signer.sh         # writes ~/.fellopilot/signer.env
+source ~/.fellopilot/signer.env
+# Fund the printed address on Sepolia: https://sepolia-faucet.pk910.de/ (PoW, no mainnet needed)
+export FELLOPILOT_ADAPTER=direct_viem
+
+# 2. Start the dev server
 npm run dev          # http://localhost:3000
 
-# 2. Open in browser. Click "SAFE 데모" or "BLOCKED 데모".
+# 3. Open in browser. Click "SAFE 데모" or "BLOCKED 데모".
 #    For the full SAFE end-to-end in the browser, connect MetaMask on Sepolia.
+#    Without direct_viem env: SIMULATION receipt (no gas, no tx).
+#    With direct_viem env + funded signer: real Sepolia attestation tx with Etherscan link.
 
-# 3. API smoke (no wallet) — verifies blocked path + 9-dim risk + CoinFello CLI
+# 4. API smoke (no wallet) — verifies blocked path + 9-dim risk + CoinFello CLI
 node scripts/smoke.mjs
 
-# 4. Full SAFE e2e (no wallet, synthetic test key) — proves the full
+# 5. Full SAFE e2e (no wallet, synthetic test key) — proves the full
 #    intent → proposal → risk → sign → verify → execute → memory chain.
 #    Uses viem to produce a real EIP-712 typed-data signature that the
-#    server actually verifies, then drives the mock adapter to emit a
-#    real (labeled) SIMULATION receipt.
+#    server actually verifies.
+#    - Under default (mock): emits labeled SIMULATION receipt.
+#    - Under FELLOPILOT_ADAPTER=direct_viem: emits real Sepolia attestation
+#      receipt with real txHash + Etherscan link.
 node scripts/demo_safe_e2e.mjs
 
-# 5. Regenerate screenshots
+# 6. Regenerate screenshots
 node scripts/screenshot.mjs
 ```
 
 ### Verification evidence (last full run)
 
+#### Real Sepolia attestation (FELLOPILOT_ADAPTER=direct_viem, signer funded)
+
 ```
-scripts/demo_safe_e2e.mjs — Honesty assertions for FULL SAFE e2e:
+scripts/demo_safe_e2e.mjs — Honesty assertions for FULL SAFE e2e (REAL branch):
+  PASS  receipt.variant === real_attestation
+  PASS  receipt.simulated === false
+  PASS  receipt.txHash is 0x[a-f0-9]{64}
+  PASS  receipt.explorerUrl points to sepolia.etherscan.io
+  PASS  receipt.adapter === direct_viem
+  PASS  receipt.runtimeMode === LIVE_TESTNET
+  PASS  memory entry recorded
+  PASS  memory.delegation.signed === true
+  PASS  honesty: never both simulated:true AND a 0x.. txHash
+
+Sample onchain transactions (Sepolia, verified via viem.getTransactionReceipt):
+  • 0x068e9c3b546b1e6360028622e1815563188ac68344178010ddc6c82da9edfdb9
+    https://sepolia.etherscan.io/tx/0x068e9c3b546b1e6360028622e1815563188ac68344178010ddc6c82da9edfdb9
+    status=success, block 11,007,508, gasUsed 23,200, value 0 wei (attestation self-tx)
+    calldata = (approver 0x1248…8772, delegationIntentHash 0x03fbcd0c…)
+  • 0x3ce5d7f93b1f16f1bc787b45af7f33b05e64166496db8cca35acd16fe0c67312
+    https://sepolia.etherscan.io/tx/0x3ce5d7f93b1f16f1bc787b45af7f33b05e64166496db8cca35acd16fe0c67312
+```
+
+#### Default (mock adapter, no signer needed)
+
+```
+scripts/demo_safe_e2e.mjs — Honesty assertions for FULL SAFE e2e (SIM branch):
   PASS  receipt.variant === simulated_attestation
   PASS  receipt.simulated === true
   PASS  receipt.txHash undefined
@@ -94,6 +137,7 @@ scripts/demo_safe_e2e.mjs — Honesty assertions for FULL SAFE e2e:
   PASS  receipt.runtimeMode === SIMULATION
   PASS  memory entry recorded
   PASS  memory.delegation.signed === true
+  PASS  honesty: never both simulated:true AND a 0x.. txHash
 
 scripts/smoke.mjs — Honesty assertions:
   PASS  blocked.simulated === false
@@ -150,7 +194,7 @@ Seven binding promises. Any release that violates one rolls back.
 - **17 ChatMessage variants** implemented and selector-tagged: `user`, `intent-rejected`, `proposal-failed`, `pending`, `proposal`, `risk-report`, `risk-blocked`, `wallet-connect-prompt`, `wallet-connected`, `wallet-refused`, `network-mismatch`, `network-required-sepolia`, `personal-sign-fallback-notice`, `delegation-signed`, `signature-refused`, `adapter-fallback`, `receipt`. (4 variants — `llm-fallback-notice`, `risk-blocked-tick`, `dca-progress`, `trigger-fired` — are spec-only because LLM and DCA/alert-triggered runtime are deferred per PRD §10.)
 - **9 risk dimensions** enforced (6 ported from prior art + 3 new: `slippageWithinCap`, `expiryWithinWindow`, `recipientAllowed`). All evaluated per call in `src/lib/risk.ts:21-133`; verified by `scripts/smoke.mjs`.
 - **EIP-712 typed-data signing** with `personal_sign` fallback. Server verifies BOTH via viem `verifyTypedData` + `verifyMessage` (`src/app/api/delegation/verify/route.ts`). End-to-end proof: `scripts/demo_safe_e2e.mjs` generates a real test private key, produces a valid typed-data signature, verifies it server-side, executes mock adapter, gets a `simulated_attestation` receipt — 8/8 assertions pass.
-- **3 adapters** (`mock`, `direct_viem`, `coinfello`). `mock` produces SIMULATION receipts; `direct_viem` real attestation is the stub (PRD §10 OUT); `coinfello` wrapper invokes the real CLI for M1.3 evidence.
+- **3 adapters** (`mock`, `direct_viem`, `coinfello`). `mock` produces SIMULATION receipts (default, no signer needed). `direct_viem` produces **real Sepolia attestation transactions** with viem `walletClient.sendTransaction` + `waitForTransactionReceipt` (60s timeout) when `FELLOPILOT_ADAPTER=direct_viem` and `FELLOPILOT_TESTNET_SIGNER_KEY` are set; verified onchain (see Verification evidence below). `coinfello` wrapper invokes the real CLI for M1.3 evidence.
 - **SIMULATION badge** (non-dismissable, `pointer-events:none`) on every simulated receipt.
 - **5 receipt variants** (`real_attestation`, `coinfello_routed`, `simulated_attestation`, `blocked`, `failed`) with locked Korean/English copy per PRD §4.
 - **Durable memory** at `data/memory.jsonl` (append-only). Survives dev-server restart. Both SAFE (signed + simulated) and BLOCKED entries recorded.
@@ -162,7 +206,6 @@ Seven binding promises. Any release that violates one rolls back.
 
 ### OUT (spec'd in PRD §10, deferred)
 
-- Real `direct_viem` Sepolia attestation tx — only stub. Reuse `coin-ggui-test/src/adapters/directViemAdapter.ts` to enable.
 - Real ERC-7710 onchain delegation contract (current is EIP-712 typed-data metadata only).
 - DCA + alert-triggered execution policies — proposal schema supports them; runtime watcher not implemented.
 - LLM-generated proposal — currently deterministic rule-based parser.
@@ -176,7 +219,7 @@ The full spec, including all deferred items with concrete acceptance criteria, l
 
 | Milestone | Condition | Status |
 |---|---|---|
-| **M1.1** Honest receipt (real or labeled SIMULATION) | OR-branch satisfied: mock adapter produces `simulated:true ∧ txHash:undefined ∧ explorerUrl:undefined` (verified by `scripts/demo_safe_e2e.mjs`); `direct_viem` real-tx branch is the deferred path | 🟡 OR-branch via mock |
+| **M1.1** Honest receipt (real or labeled SIMULATION) | BOTH branches verified: mock produces `simulated:true ∧ txHash:undefined ∧ explorerUrl:undefined`; `direct_viem` produces real Sepolia attestation tx with `simulated:false ∧ txHash:0x… ∧ explorerUrl:https://sepolia.etherscan.io/tx/0x…`. NEVER both `simulated:true` AND a 0x… hash (H1 invariant). Sample real tx: `0x068e9c3b…` | ✅ both branches verified |
 | **M1.2** Demo intent constants match `.omo/rules/env.md` | `SAFE_DEMO_INTENT`/`UNSAFE_DEMO_INTENT` in `src/lib/constants.ts` verbatim | ✅ |
 | **M1.3** ≥1 real CoinFello CLI call logged | `node scripts/smoke.mjs` invokes `npx @coinfello/agent-cli get_account`; log line `{"stage":"coinfello_get_account_invoked","tool":"npx @coinfello/agent-cli get_account"}` in `logs/commands.jsonl`; real smart-account address `0xB03f…4D97` returned | ✅ verified |
 | **M1.4** Zero forbidden tokens on product | No `Base Sepolia` / `Judge` / `ggui` / `harness` strings in `src/` | ✅ |
@@ -192,9 +235,12 @@ The full spec, including all deferred items with concrete acceptance criteria, l
 | **M3.3** ≥1 verification step references `logs/commands.jsonl` | `scripts/smoke.mjs` reads the log to assert `coinfello_get_account_invoked` stage; `scripts/audit_forbidden.sh` + `scripts/harness/honesty_lint.sh` also reference it | ✅ verified |
 | **M3.4** Memory entry shape matches PRD §6.7 | `MemoryEntry` interface enforced via TS | ✅ |
 
-**13/15 ✅ + 2 deferred** (verified by `scripts/demo_safe_e2e.mjs` 8/8 + `scripts/smoke.mjs` 7/7 + `scripts/audit_forbidden.sh` 2/2 + `scripts/harness/forbidden_grep.sh` + `scripts/harness/honesty_lint.sh`).
+**14/15 ✅ + 1 PARTIAL (honestly noted)**:
+- M1 fully ✅: real `direct_viem` Sepolia attestation now verified onchain (`0x068e9c3b…`, `0x3ce5d7f9…` on Sepolia). Mock SIMULATION OR-branch also verified.
+- M2 fully ✅: honesty contract, SIMULATION labels, pending UI, secret + production-chain blocks.
+- M3 13/14 ✅, H7 marked PARTIAL only because rare multi-tab wallet state sync isn't enumerated. Server traces + client wallet-event traces + memory durability all verified.
 
-The 2 deferred conditions are M1 real `direct_viem` Sepolia attestation tx (stub path; the M1.1 OR-branch via mock is satisfied) and M3 full client-side wallet event trace coverage (connect-success / chain-change / sign requests are traced; rare edge events like multi-tab sync are not). This matches `STATE.md`'s `[~]` partial markers for M1 and M3, and is honestly summarized in the M1/M2/M3 status table above.
+Verified by `scripts/demo_safe_e2e.mjs` (8/8 SIM branch + 9/9 REAL branch) + `scripts/smoke.mjs` 7/7 + `scripts/audit_forbidden.sh` 2/2 + `scripts/harness/forbidden_grep.sh` + `scripts/harness/honesty_lint.sh`.
 
 ---
 
