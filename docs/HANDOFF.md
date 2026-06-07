@@ -1,7 +1,7 @@
 # FelloPilot — Session Handoff
 
 > **For the next session.** Read this end-to-end before touching anything.
-> **Last updated**: 2026-06-08 (final docs-refresh commit, **21 commits ahead of origin, unpushed**).
+> **Last updated**: 2026-06-08 (local `main` ahead of origin, unpushed; confirm exact count with `git rev-list --count origin/main..HEAD`).
 > **Repo**: <https://github.com/B-oxygen/Fello-Pilot> (branch `main`).
 > **Local path**: `/Users/uni-claw/dev/260607/`.
 
@@ -16,7 +16,7 @@ FelloPilot is a 7-stage chat-based AI crypto execution autopilot on Sepolia test
 - **PRD §13 verifier inventory** — 7/7 implemented (4 Playwright specs + 3 strict-verifier harness scripts).
 - **Wallet-mock revival** — shipped. Root cause was missing CORS on sign-server (NOT any of the 4 ranked HANDOFF suspects). Plus a personal_sign hex-bytes bug discovered via the same diagnostic.
 - **9 H5 honesty surfaces** closed across 9 Oracle review rounds (proposalId binding in DCA / alert / verify / execute / adapters / personal_sign / intent-hash / approver).
-- **21 commits on local main, NOT pushed** — `git push origin main` is the only outstanding ops action.
+- **Local main has unpushed commits** — `git push origin main` is the only outstanding ops action.
 
 Functional coverage vs. strict PRD AC: **35/35 ACs** automated (was 30/35). All 5 previously-blocked ACs now have automated coverage:
 - AC-2.2 LLM timeout → `scripts/demo_llm_timeout.mjs` (mock OpenAI delays >10s)
@@ -243,7 +243,7 @@ Plus: schema guard at `/api/delegation/verify` (malformed JSON → 400, missing 
 ```bash
 git push origin main
 ```
-Publishes the 21 local commits. Everything is closed: PRD §11 + §13 + §10 P1.1-P1.5 + 35/35 AC. Nothing else is owed unless the operator wants to expand scope.
+Publishes all local commits. Everything is closed: PRD §11 + §13 + §10 P1.1-P1.5 + 35/35 AC. Nothing else is owed unless the operator wants to expand scope.
 
 ---
 
@@ -476,12 +476,12 @@ Do NOT remove the legacy path until the verify route persists raw signatures for
 
 ## Suggested next-session opening message
 
-> "Read `docs/HANDOFF.md` first. Run the full verification suite from §Quick start step 5a (~60s wall-time, includes new demo_llm_timeout.mjs + demo_adapter_fallback.mjs). Confirm `git rev-list --count origin/main..HEAD` is 21. Then: **A** push and stop (recommended; everything is closed), or expand scope on something new."
+> "Read `docs/HANDOFF.md` first. Run the full verification suite from §Quick start step 5a (~60s wall-time, includes new demo_llm_timeout.mjs + demo_adapter_fallback.mjs). Confirm `git rev-list --count origin/main..HEAD` is nonzero until pushed. Then: **A** push and stop (recommended; everything is closed), or expand scope on something new."
 
 ---
 
 ## Open questions for the operator
 
-- Push the 21 commits now (Option A)?
+- Push the local commits now (Option A)?
 - Anything new to expand scope on? (DelegationManager.redeemDelegation full ERC-20 transferFrom path is shipped but not exercised by demo — testnet USDC + allowance setup needed.)
 - Revoke flow surface in UI? (The contract has `revoke(intent)` but no UI button.)

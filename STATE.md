@@ -80,4 +80,4 @@ Update only via the loop or explicit user instruction. Binary completion only.
 
 - Source of truth: this file. Loop must read before each iteration and update only on verified completion.
 - Rules (`.omo/rules/*`) and `AGENTS.md` are immutable from inside the loop (enforced by `.opencode/plugin/guard.ts`).
-- **21 commits ahead of origin/main after the final docs-refresh commit. `git push origin main` outstanding.**
+- **Local `main` is ahead of origin/main. Confirm with `git rev-list --count origin/main..HEAD`; `git push origin main` outstanding.**
