@@ -31,6 +31,17 @@ export async function POST(request: Request) {
     );
   }
 
+  // PRD AC-1.3: exactly one `intent_received` log line per ACCEPTED intent.
+  // Emitted AFTER E001/E002 rejection so secrets/empty inputs do not increment
+  // the counter. Metadata only — H4 forbids echoing raw user text.
+  await appendCommandLog({
+    tool: "api/proposal",
+    stage: "intent_received",
+    action: parsed.intent.action,
+    chain: parsed.intent.chain,
+    rawLength: raw.length,
+  });
+
   const fallbackTrail: Array<{ from: string; to: string; reason: string }> = [];
 
   let llmResult: LlmProposalResult | null = null;

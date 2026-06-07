@@ -1,0 +1,17 @@
+{
+  "_doc": "Negative test fixture for PRD AC-6.3 — proves honesty_lint.sh can detect an H1 contract violation. Do NOT load this into the product. It is intentionally dishonest: simulated:true + a fake 0x txHash, which honesty_lint.sh MUST reject with exit != 0.",
+  "proposalId": "prop_NEGATIVE_TEST_FIXTURE",
+  "traceId": "trace_dishonest_test",
+  "status": "MOCK_EXECUTED",
+  "variant": "simulated_attestation",
+  "adapter": "mock",
+  "runtimeMode": "SIMULATION",
+  "simulated": true,
+  "message": "DISHONEST FIXTURE — should never appear in production. honesty_lint.sh MUST reject.",
+  "timestamp": "2026-06-07T00:00:00.000Z",
+  "chainId": 11155111,
+  "chainName": "sepolia",
+  "txnId": "sim_fake_negative_test",
+  "txHash": "0xfake0000000000000000000000000000000000000000000000000000000000fa",
+  "explorerUrl": "https://sepolia.etherscan.io/tx/0xfake"
+}

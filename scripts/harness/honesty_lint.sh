@@ -1,11 +1,43 @@
 #!/usr/bin/env bash
 # Maps: E1 (<details>+JSON.stringify on product surface), E2 (fake 0x txHash / explorer URL in mock).
+# Also enforces PRD AC-6.3 H1 receipt invariant: any JSON file passed as a CLI
+# arg (or data/execution_receipt.json by default) MUST NOT have simulated:true
+# AND a populated txHash at the same time.
 set -uo pipefail
 
 HARNESS_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HARNESS_ROOT"
 
 fail=0
+
+# H1 invariant check on receipt-shaped JSON fixtures.
+#   Usage: honesty_lint.sh [path-to-receipt.json ...]
+#   With no args, falls back to data/execution_receipt.json if it exists.
+check_receipt_fixture() {
+  local path="$1"
+  if [ ! -f "$path" ]; then
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "[honesty_lint] WARN: jq not available, skipping H1 receipt invariant on $path"
+    return 0
+  fi
+  local sim tx
+  sim=$(jq -r '.simulated // false' "$path" 2>/dev/null || echo "")
+  tx=$(jq -r '.txHash // empty' "$path" 2>/dev/null || echo "")
+  if [ "$sim" = "true" ] && [ -n "$tx" ] && [[ "$tx" =~ ^0x[0-9a-fA-F]+ ]]; then
+    echo "[honesty_lint] FAIL: H1 invariant violated in $path — simulated:true with populated txHash=$tx"
+    fail=1
+  fi
+}
+
+if [ $# -gt 0 ]; then
+  for arg in "$@"; do
+    check_receipt_fixture "$arg"
+  done
+elif [ -f data/execution_receipt.json ]; then
+  check_receipt_fixture data/execution_receipt.json
+fi
 
 # E2 — hard-coded transaction-hash literals inside mock/sim/fake/stub files.
 hash_pat='0x[0-9a-fA-F]{64}'

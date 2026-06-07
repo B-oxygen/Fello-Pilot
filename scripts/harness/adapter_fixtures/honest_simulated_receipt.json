@@ -1,0 +1,15 @@
+{
+  "_doc": "Positive control fixture for PRD AC-6.3 — a properly honest SIMULATION receipt: simulated:true with txHash and explorerUrl absent. honesty_lint.sh MUST accept (exit 0).",
+  "proposalId": "prop_POSITIVE_CONTROL",
+  "traceId": "trace_honest_test",
+  "status": "MOCK_EXECUTED",
+  "variant": "simulated_attestation",
+  "adapter": "mock",
+  "runtimeMode": "SIMULATION",
+  "simulated": true,
+  "message": "SIMULATION — no onchain transaction was sent.",
+  "timestamp": "2026-06-07T00:00:00.000Z",
+  "chainId": 11155111,
+  "chainName": "sepolia",
+  "txnId": "sim_positive_control"
+}
