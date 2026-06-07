@@ -245,110 +245,36 @@ All local commits have been pushed to origin/main. Everything is closed: PRD §1
 
 ---
 
-### **Option B — revive the wallet mock, close the remaining 5 ACs** (~2-3h)
+### **Option B — wallet mock revival: done**
 
-**Goal**: complete the wallet-mocked Playwright path so demo-safe.spec.ts can run all 7 stages and 4 sibling specs can cover the UI-only ACs that currently require `window.ethereum`.
+The wallet-mocked Playwright path is now live, not dormant. Root cause was missing CORS handling in `tests/e2e/helpers/sign-server.mjs`: browser fetches from the app on `:3000` to the signer relay on `:3098` failed at the `OPTIONS` preflight. The diagnostic also found and fixed a second `personal_sign` bug: hex-encoded messages must be signed as raw bytes via `{ message: { raw: text } }`, not as UTF-8 text.
 
-**Current state of the toolset** (all shipped dormant in `tests/e2e/helpers/`):
+Shipped evidence:
 
-- `sign-server.mjs` — Node http server on port 3098, generates a random `privateKey` per spawn, uses `viem.privateKeyToAccount(PK).signTypedData(...)` and `signMessage(...)` to mint real signatures. Handles both `params[1]` as string (`JSON.parse`) and as object. Verified to start cleanly via the now-disabled `global-setup.ts`.
-- `wallet-mock.ts` — `installWalletMock(page)` injects an EIP-6963-compliant `window.ethereum` provider via `page.addInitScript`. Maintains a `connected` state machine (returns `[]` from `eth_accounts` until `eth_requestAccounts` is called, defends against wagmi's auto-connect). Dispatches `eip6963:announceProvider` on init AND on `eip6963:requestProvider` so wagmi v2's discovery resolves. Currently relays `eth_signTypedData_v4` and `personal_sign` to sign-server.
-- `playwright.config.ts` — `globalSetup` + `globalTeardown` are wired but commented out. Uncomment the two lines to opt back in.
-
-**The blocker** (what stopped me in this session): Test progressed through Stage 4 (wallet connected) but failed at Stage 5 (`chat-card-delegation-signed` never appeared). I never captured the actual error from the trace. **Likely suspects, in order of probability**:
-
-1. **wagmi 2 serialization of BigInt** in the message object before calling `provider.request`. wagmi may JSON.stringify the typed data with BigInt values → ESDM TypeError. Recovery: the sign-server already does `BigInt(td.message.spendingCap)` and `BigInt(td.message.expiry)` so the input to viem is correct; the question is what wagmi puts in `params[1]`.
-
-2. **The `types` object** — wagmi's `signTypedData_v4` might add an `EIP712Domain` entry automatically. The sign-server passes `td.types` straight through; if wagmi adds `EIP712Domain` and viem accepts it, OK. If viem rejects unexpected types, the call throws.
-
-3. **Address recovery mismatch** — verify route reconstructs the hash from `body.message + body.chainId` and calls `verifyTypedData({ expectedAddress: body.approver })`. The mock's PK address is fetched from `/address`; wagmi's `useAccount` returns whatever the mock said in `eth_accounts`. They SHOULD match because both come from the same random PK. But if there's a stringification difference (lowercase vs checksummed) the comparison breaks.
-
-4. **Asynchronous chain**: page.tsx calls `signTypedDataAsync` → wagmi → window.ethereum → fetch sign-server. If fetch fails (network sandbox in Playwright?), the entire chain throws, but page.tsx swallows it as "Signature declined" which doesn't even show up. Need to surface mock errors loudly.
-
-**Recommended diagnostic playbook (~30 min before any fix)**:
-
-```bash
-# 1. Re-enable globalSetup
-# Edit playwright.config.ts: uncomment the two globalSetup/globalTeardown lines
-
-# 2. Add console capture to demo-safe.spec.ts at the top of the test:
-#    page.on('console', msg => console.log('[browser]', msg.type(), msg.text()));
-#    page.on('pageerror', err => console.log('[browser ERROR]', err.message));
-
-# 3. Re-import + install wallet mock at the top of demo-safe.spec.ts:
-#    await installWalletMock(page);
-
-# 4. Run JUST the safe spec with headed mode to see what wagmi sends:
-#    PWDEBUG=1 npx playwright test tests/e2e/demo-safe.spec.ts --headed
-
-# 5. The wallet mock's log("request:", method, ...) will print every wagmi call.
-#    Capture what `params` looks like for eth_signTypedData_v4 specifically.
-```
-
-**Once root cause is known**, the 5 ACs unlock straightforwardly:
-
-| AC | Effort | Spec sketch |
-|---|---|---|
-| AC-2.2 LLM timeout in 15s | ~20m | Spawn isolated server with a fake OpenAI mock that delays > 10s. Assert chat-message-llm-fallback-notice appears + chat-card-proposal within 15s |
-| AC-4.2 chain mismatch UI | ~15m | In wallet mock, return chainId=`0x1` (mainnet) instead of Sepolia. Click SAFE. Assert chat-message-network-mismatch + switch-to-sepolia-button. |
-| AC-4.3 connected pill | ~10m | Complete SAFE click → wallet-connected-pill testid → assert text matches `/^0x[a-f0-9]{4}…[a-f0-9]{4}$/i` AND full address is NOT in DOM |
-| AC-5.2 personal_sign fallback | ~20m | Wallet mock throws on `eth_signTypedData_v4` → personal_sign relay still works → assert chat-message-personal-sign-fallback-notice + chat-card-delegation-signed |
-| AC-6.6 adapter-fallback | ~15m | Force `FELLOPILOT_ADAPTER=direct_viem` but with no signer key (or empty `FELLOPILOT_TESTNET_SIGNER_KEY=""`). Assert chat-message-adapter-fallback[data-from=direct_viem][data-to=mock] + simulated_attestation receipt |
-
-Total Option B: ~3h including the 30m diagnostic phase.
+- `playwright.config.ts` enables `globalSetup`/`globalTeardown` for the sign-server.
+- `installWalletMock(page, options)` supports chain mismatch and typed-data refusal scenarios.
+- `tests/e2e/demo-safe-full.spec.ts` drives all 7 stages via wallet mock.
+- `tests/e2e/chain-mismatch.spec.ts`, `tests/e2e/personal-sign-fallback.spec.ts`, `scripts/demo_llm_timeout.mjs`, and `scripts/demo_adapter_fallback.mjs` cover the five formerly blocked ACs.
+- Latest verified run: `npx playwright test` 7/7, `demo_llm_timeout.mjs` 7/7, `demo_adapter_fallback.mjs` 8/8.
 
 ---
 
-### **Option C — P1.5 ERC-7710 onchain delegation contract** (~60–90m)
+### **Option C — P1.5 ERC-7710 onchain delegation contract: done**
 
-**Current PRD §10 line 665 stance**: *"Real ERC-7710 onchain delegation contract. Prior art has ERC-7710-style EIP-712 metadata, not the live ERC-7710 deployment. PRD treats onchain delegation contract as BUILD-NEW for post-demo."*
+Operator decisions were applied: spending-cap enforcement is on-chain, one `DelegationManager` handles many delegations, and the contract/UI carry an UNAUDITED notice.
 
-This is an operator decision. The shipped real-attestation tx on Sepolia (`0x334906f0…`) anchors `(approver, delegationIntentHash)` onchain but is NOT a redeem-able delegation contract. To upgrade:
+Shipped evidence:
 
-**Architecture**:
-1. **Solidity contract** — minimal ERC-7710-style `DelegationManager`:
-   ```solidity
-   // SPDX-License-Identifier: MIT
-   contract DelegationManager {
-     event DelegationRedeemed(bytes32 indexed intentHash, address indexed approver, address indexed redeemer);
-
-     mapping(bytes32 => bool) public redeemed;
-
-     function redeemDelegation(
-       bytes32 intentHash,
-       address approver,
-       bytes calldata signature
-     ) external {
-       require(!redeemed[intentHash], "already redeemed");
-       // EIP-712 verify intentHash signed by approver
-       redeemed[intentHash] = true;
-       emit DelegationRedeemed(intentHash, approver, msg.sender);
-     }
-   }
-   ```
-2. **Deploy** to Sepolia via `forge create` (Foundry) or hardhat. Pin address in `src/lib/constants.ts`.
-3. **directViem adapter** — replace the 0-value self-tx with a call to `redeemDelegation(intentHash, approver, signature)`. The wallet-signed EIP-712 sig becomes the proof.
-4. **DelegationState** — add `redemptionTxHash` field. Update `MemoryEntry.execution`.
-5. **Verify route** — already produces the right `expectedIntentHash`. No change needed.
-
-**Tools needed (mostly already present)**:
-- `viem.deployContract` (already in viem 2.52)
-- Foundry or hardhat (NOT yet installed)
-- Sepolia ETH (signer has 2.78 ETH — plenty)
-
-**Risks / questions for the operator**:
-- Is "redeemed" tracking sufficient, or do you also want spending-cap enforcement on-chain (requires token-transfer logic in the contract)?
-- Single deployment or one-per-delegation? ERC-7710 typically: one DelegationManager, many delegations.
-- Audit posture? PRD §10 explicitly says no third-party audit is in scope.
-
-If operator says "yes, ship it": 60–90 min for happy path; +30m if spending-cap is included.
-
-If operator says "attestation is enough": stays in PRD §10 OUT.
+- `contracts/src/DelegationManager.sol` implements `attestIntent`, `redeemDelegation`, revocation, expiry checks, token allowlist checks, replay protection, and ERC-20 `transferFrom` spending-cap enforcement.
+- Sepolia deployment is pinned at `0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247` in `contracts/README.md` and `src/lib/constants.ts`.
+- `src/lib/adapters/directViem.ts` calls `DelegationManager.attestIntent(intent, signature)` when `delegation.attestation` exists.
+- `src/app/page.tsx` renders `chat-message-contract-unaudited-notice` for unaudited real-attestation receipts.
+- Latest verified run: REAL `scripts/demo_safe_e2e.mjs` 13/13 with contract assertions and SIM branch 9/9.
 
 ---
 
-### **Option D — talk first, decide later**
-Tell next session the goal and they'll consult.
+### **Option D — new scope only**
+Everything in the original B/C loop is closed. New useful expansion candidates: UI revoke flow, ERC-20 testnet allowance exercise for `redeemDelegation`, or a third-party audit path.
 
 ---
 
@@ -474,12 +400,11 @@ Do NOT remove the legacy path until the verify route persists raw signatures for
 
 ## Suggested next-session opening message
 
-> "Read `docs/HANDOFF.md` first. Run the full verification suite from §Quick start step 5a (~60s wall-time, includes new demo_llm_timeout.mjs + demo_adapter_fallback.mjs). Confirm `git rev-list --count origin/main..HEAD` is nonzero until pushed. Then: **A** push and stop (recommended; everything is closed), or expand scope on something new."
+> "Read `docs/HANDOFF.md` first. Confirm `git status --short --branch` is clean and `git rev-list --count origin/main..HEAD` is 0. If expanding scope, pick a new goal; the original B/C loop is closed."
 
 ---
 
 ## Open questions for the operator
 
-- Push the local commits now (Option A)?
 - Anything new to expand scope on? (DelegationManager.redeemDelegation full ERC-20 transferFrom path is shipped but not exercised by demo — testnet USDC + allowance setup needed.)
 - Revoke flow surface in UI? (The contract has `revoke(intent)` but no UI button.)
