@@ -10,24 +10,111 @@ import { keccak256, toBytes, verifyMessage } from "viem";
 import type { Address, Hex } from "viem";
 import type { DelegationState, SignatureMethod } from "@/types/domain";
 
-export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    proposalId: string;
+interface VerifyBody {
+  proposalId: string;
+  approver: string;
+  chainId: number;
+  signature: string;
+  method: SignatureMethod;
+  message: {
     approver: string;
-    chainId: number;
-    signature: string;
-    method: SignatureMethod;
-    message: {
-      approver: string;
-      action: string;
-      tokenAllowlist: string[];
-      spendingCap: string;
-      expiry: string;
-      proposalId: string;
-    };
-    personalSignMessage?: string;
-    delegationIntentHash?: string;
+    action: string;
+    tokenAllowlist: string[];
+    spendingCap: string;
+    expiry: string;
+    proposalId: string;
   };
+  personalSignMessage?: string;
+  delegationIntentHash?: string;
+}
+
+type SchemaResult =
+  | { ok: true; data: VerifyBody }
+  | { ok: false; error: string };
+
+function isStringStarting0x(v: unknown): v is string {
+  return typeof v === "string" && v.startsWith("0x");
+}
+
+function validateVerifyBody(raw: unknown): SchemaResult {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: "body must be a JSON object" };
+  }
+  const r = raw as Record<string, unknown>;
+
+  if (typeof r.proposalId !== "string" || r.proposalId.length === 0) {
+    return { ok: false, error: "proposalId must be a non-empty string" };
+  }
+  if (typeof r.approver !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(r.approver)) {
+    return { ok: false, error: "approver must be a 0x-prefixed 40-char hex string" };
+  }
+  if (typeof r.chainId !== "number" || !Number.isInteger(r.chainId) || r.chainId <= 0) {
+    return { ok: false, error: "chainId must be a positive integer" };
+  }
+  if (!isStringStarting0x(r.signature)) {
+    return { ok: false, error: "signature must be a 0x-prefixed hex string" };
+  }
+  if (r.method !== "eth_signTypedData_v4" && r.method !== "personal_sign") {
+    return {
+      ok: false,
+      error: "method must be 'eth_signTypedData_v4' or 'personal_sign'",
+    };
+  }
+
+  if (r.message === null || typeof r.message !== "object" || Array.isArray(r.message)) {
+    return { ok: false, error: "message must be a JSON object" };
+  }
+  const m = r.message as Record<string, unknown>;
+  if (typeof m.approver !== "string") return { ok: false, error: "message.approver must be string" };
+  if (typeof m.action !== "string") return { ok: false, error: "message.action must be string" };
+  if (!Array.isArray(m.tokenAllowlist) || !m.tokenAllowlist.every((t) => typeof t === "string")) {
+    return { ok: false, error: "message.tokenAllowlist must be array of strings" };
+  }
+  if (typeof m.spendingCap !== "string") return { ok: false, error: "message.spendingCap must be string (BigInt-as-string)" };
+  if (typeof m.expiry !== "string") return { ok: false, error: "message.expiry must be string (BigInt-as-string)" };
+  if (!isStringStarting0x(m.proposalId)) {
+    return { ok: false, error: "message.proposalId must be 0x-prefixed hex string (keccak hash)" };
+  }
+
+  if (r.personalSignMessage !== undefined && typeof r.personalSignMessage !== "string") {
+    return { ok: false, error: "personalSignMessage, when present, must be string" };
+  }
+  if (r.delegationIntentHash !== undefined && !isStringStarting0x(r.delegationIntentHash)) {
+    return { ok: false, error: "delegationIntentHash, when present, must be 0x-prefixed hex string" };
+  }
+
+  return { ok: true, data: r as unknown as VerifyBody };
+}
+
+export async function POST(request: Request) {
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch (err) {
+    await appendCommandLog({
+      tool: "api/delegation/verify",
+      stage: "verify_body_unparseable",
+      reason: (err as Error).message,
+    });
+    return NextResponse.json(
+      { error: "malformed JSON body", detail: (err as Error).message },
+      { status: 400 },
+    );
+  }
+
+  const validation = validateVerifyBody(raw);
+  if (!validation.ok) {
+    await appendCommandLog({
+      tool: "api/delegation/verify",
+      stage: "verify_schema_rejected",
+      reason: validation.error,
+    });
+    return NextResponse.json(
+      { error: `schema validation failed: ${validation.error}` },
+      { status: 400 },
+    );
+  }
+  const body = validation.data;
 
   // H5 invariant (PRD §2): the wrapper body.proposalId MUST correspond to the
   // signed message.proposalId (which is keccak256(toBytes(proposalIdString))).

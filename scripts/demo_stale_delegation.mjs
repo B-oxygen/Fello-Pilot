@@ -314,6 +314,31 @@ console.log(
   }),
 );
 
+console.log("\n=== Test 10: /api/delegation/verify rejects malformed JSON body with 400 (not 500) ===");
+const malformedRes = await fetch(`${BASE}/api/delegation/verify`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: "{this is not JSON",
+});
+const malformedJson = await malformedRes.json().catch(() => ({}));
+console.log(
+  "  /api/delegation/verify with malformed JSON:",
+  JSON.stringify({ status: malformedRes.status, body: malformedJson }),
+);
+
+console.log("\n=== Test 11: /api/delegation/verify rejects missing required field with 400 ===");
+const missingFieldRes = await post("/api/delegation/verify", {
+  proposalId: "prop_missing_message_field",
+  approver: "0xf800baDc6d299402Bb5999D17f52bEaFBbA15140",
+  chainId: 11155111,
+  signature: "0x" + "a".repeat(130),
+  method: "eth_signTypedData_v4",
+});
+console.log(
+  "  /api/delegation/verify with no `message` field:",
+  JSON.stringify(missingFieldRes.json),
+);
+
 console.log("\n=== Assertions ===");
 const checks = [
   {
@@ -382,6 +407,21 @@ const checks = [
       approverMismatch.json.approverBindingValid === false &&
       approverMismatch.json.valid === false &&
       approverMismatch.json.state?.status === "rejected",
+  },
+  {
+    name: "malformed JSON body returns 400 (clean schema rejection, not 500)",
+    pass:
+      malformedRes.status === 400 &&
+      typeof malformedJson?.error === "string" &&
+      /malformed JSON/i.test(malformedJson.error),
+  },
+  {
+    name: "missing required field returns 400 with schema-validation error",
+    pass:
+      missingFieldRes.status === 400 &&
+      typeof missingFieldRes.json?.error === "string" &&
+      /schema validation failed/i.test(missingFieldRes.json.error) &&
+      /message/i.test(missingFieldRes.json.error),
   },
 ];
 let fails = 0;
