@@ -63,7 +63,7 @@ Update only via the loop or explicit user instruction. Binary completion only.
   - [x] Adapters (mock + directViem) — defense-in-depth proposalId check
   - Regression suite: `scripts/demo_stale_delegation.mjs` 11/11 PASS (T1-T9 H5 + T10-T11 schema)
 
-- [x] **Wallet-mock revival — shipped 2026-06-08 (Option B from prior HANDOFF)**
+- [x] **Wallet-mock revival — shipped 2026-06-08**
   - [x] Root cause was **NOT** any of the 4 ranked suspects (BigInt serialization, EIP712Domain auto-inject, address checksum, async error swallow). It was missing CORS on sign-server (browser fetch from :3000 to :3098 hit a 404 OPTIONS preflight). Fix: 8 lines in `tests/e2e/helpers/sign-server.mjs`.
   - [x] Second bug found via the same diagnostic: personal_sign path signed the hex-encoded message as if it were UTF-8 text. Fix: detect hex-bytes and pass `{ message: { raw: text } }` to viem.signMessage so the EIP-191 prefix is applied to the right bytes (matches what `verifyMessage` checks against on the server).
   - [x] `installWalletMock(page, options)` refactored to accept `{ chainIdHex, signTypedDataThrows }` + `globalThis.__triggerMockChainChanged()` injection hook.

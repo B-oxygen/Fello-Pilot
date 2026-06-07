@@ -245,7 +245,7 @@ All local commits have been pushed to origin/main. Everything is closed: PRD §1
 
 ---
 
-### **Option B — wallet mock revival: done**
+### **Completed B — wallet mock revival**
 
 The wallet-mocked Playwright path is now live, not dormant. Root cause was missing CORS handling in `tests/e2e/helpers/sign-server.mjs`: browser fetches from the app on `:3000` to the signer relay on `:3098` failed at the `OPTIONS` preflight. The diagnostic also found and fixed a second `personal_sign` bug: hex-encoded messages must be signed as raw bytes via `{ message: { raw: text } }`, not as UTF-8 text.
 
@@ -259,7 +259,7 @@ Shipped evidence:
 
 ---
 
-### **Option C — P1.5 ERC-7710 onchain delegation contract: done**
+### **Completed C — P1.5 ERC-7710 onchain delegation contract**
 
 Operator decisions were applied: spending-cap enforcement is on-chain, one `DelegationManager` handles many delegations, and the contract/UI carry an UNAUDITED notice.
 
@@ -304,7 +304,7 @@ Everything in the original B/C loop is closed. New useful expansion candidates: 
 
 ### 3. Playwright cannot reliably spawn a second `next dev` for kill-restart tests
 **Symptom**: Cache collision between the main dev server and an isolated test server because both share `.next/`. Verified in this session: collapsed the entire suite to 0/4 pass.
-**Fix**: For Option B, do not respawn `next dev` from inside Playwright. The `memory-durability.spec.ts` uses a 3-layer file/API/static-grep proof + documents the real bounce as ops-level (`scripts/harness/preflight.sh dev`).
+**Fix**: For the wallet-mock path, do not respawn `next dev` from inside Playwright. The `memory-durability.spec.ts` uses a 3-layer file/API/static-grep proof + documents the real bounce as ops-level (`scripts/harness/preflight.sh dev`).
 
 ### 4. `.omo/rules/*` and `AGENTS.md` are immutable from inside this directory
 The `guard.ts` plugin will block edits. If a rule needs to evolve, edit `guard.ts` directly and re-run the integration check.
@@ -324,7 +324,7 @@ direct_viem uses `FELLOPILOT_TESTNET_SIGNER_KEY` (service-side) to ANCHOR the us
 After Oracle round 4, the verify route ALWAYS recomputes the hash via `hashDelegationMessage({ message: body.message, chainId: body.chainId })` and persists THAT value. A client-supplied `delegationIntentHash` that differs causes `intentHashBindingValid:false` rejection. Don't refactor the verify route without preserving this.
 
 ### 9. wagmi v2 EIP-6963 announce timing
-For Option B: a single `eip6963:announceProvider` event on init is NOT enough. wagmi may listen via `eip6963:requestProvider` AFTER mount. The mock already re-dispatches on each request — keep that behavior.
+For the wallet-mock path: a single `eip6963:announceProvider` event on init is NOT enough. wagmi may listen via `eip6963:requestProvider` AFTER mount. The mock already re-dispatches on each request — keep that behavior.
 
 ### 10. `playwright.config.ts` `globalSetup` IS NOW ENABLED
 Sign-server auto-spawns on every `npx playwright test`. The 4 original specs don't use it, but the spawn is idempotent. If port 3098 is occupied (e.g., another sign-server still running), `pkill -f sign-server.mjs` before re-running.
@@ -351,7 +351,7 @@ Do NOT remove the legacy path until the verify route persists raw signatures for
 4. **`RETROSPECTIVE.md`** — 24 prior failures wired into PRD invariants
 5. **`.omo/rules/{env,boundary,crypto-safety,stack,observability,ralphthon-mode}.md`** — immutable policy
 6. **`scripts/harness/capability_matrix.json`** — provider × chain support
-7. **`tests/e2e/helpers/wallet-mock.ts`** + **`sign-server.mjs`** — Option B starting point
+7. **`tests/e2e/helpers/wallet-mock.ts`** + **`sign-server.mjs`** — wallet-mock implementation reference
 
 ---
 
