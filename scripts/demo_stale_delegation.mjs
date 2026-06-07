@@ -85,8 +85,6 @@ const dcaStartFresh = await post("/api/dca/start", null);
 console.log("  /api/dca/start (fresh delegation):", dcaStartFresh.json.ok);
 
 console.log("\n=== Test 4: DCA tick rejects after delegation swapped mid-flight ===");
-// Swap delegation to point at a different proposalId by writing a forged state file.
-// This proves tickDca re-checks proposalId binding even when ledger says proposalId=B.
 const FORGED_DELEGATION = {
   proposalId: "prop_FORGED000000000000000000000000",
   status: "approved",
@@ -104,6 +102,69 @@ const tickAfterForge = await post("/api/dca/tick", null);
 console.log(
   "  /api/dca/tick after forging delegation to a different proposalId:",
   JSON.stringify(tickAfterForge.json),
+);
+
+console.log("\n=== Test 5: /api/delegation/verify rejects body.proposalId mismatch against signed message.proposalId ===");
+// Sign delegation message for proposal X. Submit verify with body.proposalId=Y
+// (same signed message, just lying about which proposalId it binds).
+// Server must refuse so the resulting DelegationState is NOT marked approved for Y.
+const propX = (await post("/api/proposal", { intent: ONESHOT_INTENT })).json
+  .proposal;
+const builtX = (
+  await post("/api/delegation/build", {
+    proposal: propX,
+    approver: account.address,
+    chainId: CHAIN_ID,
+  })
+).json;
+const sigX = await account.signTypedData({
+  domain: builtX.domain,
+  types: builtX.types,
+  primaryType: builtX.primaryType,
+  message: {
+    approver: builtX.message.approver,
+    action: builtX.message.action,
+    tokenAllowlist: builtX.message.tokenAllowlist,
+    spendingCap: BigInt(builtX.message.spendingCap),
+    expiry: BigInt(builtX.message.expiry),
+    proposalId: builtX.message.proposalId,
+  },
+});
+const verifyMismatch = await post("/api/delegation/verify", {
+  proposalId: "prop_LIES_ABOUT_BINDING_000000000000",
+  approver: account.address,
+  chainId: CHAIN_ID,
+  signature: sigX,
+  method: "eth_signTypedData_v4",
+  message: builtX.message,
+  personalSignMessage: builtX.personalSignMessage,
+  delegationIntentHash: builtX.hash,
+});
+console.log(
+  "  /api/delegation/verify with body.proposalId != signed message.proposalId:",
+  JSON.stringify({
+    valid: verifyMismatch.json.valid,
+    proposalIdBindingValid: verifyMismatch.json.proposalIdBindingValid,
+    state_status: verifyMismatch.json.state?.status,
+  }),
+);
+
+console.log("\n=== Test 6: /api/execute refuses when active proposal != delegation.proposalId ===");
+// Sign proposal A delegation honestly. Then swap the active proposal to a
+// fresh oneshot B without re-signing. /api/execute must refuse.
+const propAfresh = (await post("/api/proposal", { intent: ONESHOT_INTENT })).json
+  .proposal;
+await buildSignVerify(propAfresh, account);
+const propBoneshot = (
+  await post("/api/proposal", {
+    intent:
+      "Sepolia testnet에서 0.5 USDC를 ETH로 단발성 스왑. mainnet 금지. 사람 승인 필수.",
+  })
+).json.proposal;
+const executeMismatch = await post("/api/execute", null);
+console.log(
+  "  /api/execute under unbound delegation:",
+  JSON.stringify(executeMismatch.json).slice(0, 400),
 );
 
 console.log("\n=== Assertions ===");
@@ -134,6 +195,24 @@ const checks = [
       tickAfterForge.status === 400 &&
       tickAfterForge.json.ok === false &&
       tickAfterForge.json.code === "NO_DELEGATION",
+  },
+  {
+    name: "verify route rejects body.proposalId != signed message.proposalId",
+    pass:
+      verifyMismatch.json.proposalIdBindingValid === false &&
+      verifyMismatch.json.valid === false &&
+      verifyMismatch.json.state?.status === "rejected",
+  },
+  {
+    name: "execute route refuses unbound active proposal",
+    pass:
+      executeMismatch.status === 400 &&
+      typeof executeMismatch.json.error === "string" &&
+      /delegation not signed\/verified for the active proposal/.test(
+        executeMismatch.json.error,
+      ) &&
+      executeMismatch.json.activeProposalId === propBoneshot.id &&
+      executeMismatch.json.delegationProposalId === propAfresh.id,
   },
 ];
 let fails = 0;

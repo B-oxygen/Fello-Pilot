@@ -90,6 +90,15 @@ export async function executeDirectViem(args: {
       `delegation status is '${delegation.status}', must be 'approved'`,
     );
   }
+  // Defense-in-depth (H5): same proposal-binding check the route layer performs.
+  // A stale delegation must not anchor a real Sepolia tx for an unrelated proposal.
+  if (delegation.proposalId !== proposal.id) {
+    return buildFailed(
+      { proposal, traceId },
+      timestamp,
+      `delegation belongs to ${delegation.proposalId}, not active proposal ${proposal.id}`,
+    );
+  }
 
   const chainId = delegation.chainId ?? SEPOLIA_CHAIN_ID;
   if (BLOCKED_MAINNET_CHAIN_IDS.includes(chainId as never)) {

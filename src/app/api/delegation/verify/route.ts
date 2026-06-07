@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { deserializeMessage, verifyDelegationSignature } from "@/lib/delegation";
 import { appendCommandLog, writeJson, DataFile } from "@/lib/store";
+import { keccak256, toBytes, verifyMessage } from "viem";
 import type { Address, Hex } from "viem";
 import type { DelegationState, SignatureMethod } from "@/types/domain";
-import { verifyMessage } from "viem";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as {
@@ -24,24 +24,37 @@ export async function POST(request: Request) {
     delegationIntentHash?: string;
   };
 
+  // H5 invariant (PRD §2): the wrapper body.proposalId MUST correspond to the
+  // signed message.proposalId (which is keccak256(toBytes(proposalIdString))).
+  // Without this a client can sign typed data for proposal A while submitting
+  // body.proposalId=B, and the server would write an "approved" DelegationState
+  // for B. Refuse if they don't match before any signature verification work.
+  const expectedHashedProposalId = keccak256(toBytes(body.proposalId));
+  const proposalIdBindingValid =
+    typeof body.message?.proposalId === "string" &&
+    body.message.proposalId.toLowerCase() ===
+      expectedHashedProposalId.toLowerCase();
+
   let valid = false;
-  try {
-    if (body.method === "eth_signTypedData_v4") {
-      valid = await verifyDelegationSignature({
-        message: deserializeMessage(body.message),
-        chainId: body.chainId,
-        signature: body.signature as Hex,
-        expectedAddress: body.approver as Address,
-      });
-    } else if (body.method === "personal_sign" && body.personalSignMessage) {
-      valid = await verifyMessage({
-        address: body.approver as Address,
-        message: body.personalSignMessage,
-        signature: body.signature as Hex,
-      });
+  if (proposalIdBindingValid) {
+    try {
+      if (body.method === "eth_signTypedData_v4") {
+        valid = await verifyDelegationSignature({
+          message: deserializeMessage(body.message),
+          chainId: body.chainId,
+          signature: body.signature as Hex,
+          expectedAddress: body.approver as Address,
+        });
+      } else if (body.method === "personal_sign" && body.personalSignMessage) {
+        valid = await verifyMessage({
+          address: body.approver as Address,
+          message: body.personalSignMessage,
+          signature: body.signature as Hex,
+        });
+      }
+    } catch (err) {
+      valid = false;
     }
-  } catch (err) {
-    valid = false;
   }
 
   const intentHash =
@@ -60,7 +73,11 @@ export async function POST(request: Request) {
       expiryMinutes: 60,
     },
     approvedAt: valid ? new Date().toISOString() : undefined,
-    message: valid ? "Delegation signature verified." : "Delegation signature mismatch.",
+    message: valid
+      ? "Delegation signature verified."
+      : proposalIdBindingValid
+        ? "Delegation signature mismatch."
+        : `Refused: body.proposalId (${body.proposalId}) does not bind the signed message.proposalId hash.`,
     updatedAt: new Date().toISOString(),
     connectedWallet: {
       eoaAddress: body.approver,
@@ -83,8 +100,9 @@ export async function POST(request: Request) {
     proposalId: body.proposalId,
     signatureMethod: body.method,
     valid,
+    proposalIdBindingValid,
     intentHashPresent: Boolean(intentHash),
   });
 
-  return NextResponse.json({ valid, state });
+  return NextResponse.json({ valid, state, proposalIdBindingValid });
 }

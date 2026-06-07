@@ -24,6 +24,26 @@ export async function executeMock(args: {
     };
   }
 
+  // Defense-in-depth (H5): even though /api/execute now refuses unbound
+  // delegations at the route layer, the adapter MUST also refuse a delegation
+  // whose proposalId does not match the proposal it is being asked to execute.
+  // Otherwise a future call site that bypasses the route guard could replay
+  // a stale signature here.
+  if (delegation.proposalId !== proposal.id) {
+    return {
+      proposalId: proposal.id,
+      traceId,
+      status: "BLOCKED",
+      variant: "blocked",
+      adapter: "mock",
+      runtimeMode: "BLOCKED",
+      simulated: false,
+      message: `Execution refused: delegation belongs to ${delegation.proposalId}, not ${proposal.id}.`,
+      timestamp,
+      blockedReasons: ["delegation_proposal_mismatch"],
+    };
+  }
+
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   const txnId = `sim_${randomUUID().slice(0, 12)}`;

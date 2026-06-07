@@ -27,6 +27,32 @@ export async function POST(_request: Request) {
     );
   }
 
+  // H5 invariant (PRD §2): the stored delegation MUST be signed AND BOUND to
+  // the active proposal. Otherwise a fresh proposal could be executed under a
+  // signature collected for a previous, unrelated one.
+  if (
+    delegation.signatureValid !== true ||
+    delegation.status !== "approved" ||
+    delegation.proposalId !== proposal.id
+  ) {
+    await appendCommandLog({
+      tool: "api/execute",
+      stage: "execute_refused_unbound_delegation",
+      proposalId: proposal.id,
+      delegationProposalId: delegation.proposalId,
+      delegationStatus: delegation.status,
+      signatureValid: delegation.signatureValid === true,
+    });
+    return NextResponse.json(
+      {
+        error: "delegation not signed/verified for the active proposal",
+        delegationProposalId: delegation.proposalId,
+        activeProposalId: proposal.id,
+      },
+      { status: 400 },
+    );
+  }
+
   const traceId = `trace_${randomUUID().slice(0, 12)}`;
   const fallbackTrail: Array<{ from: string; to: string; reason: string }> = [];
 

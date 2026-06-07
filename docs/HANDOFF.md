@@ -59,7 +59,7 @@ Remaining work is **only scope-expansion** (P1.5 ERC-7710 contract — operator 
 │   │   └── wagmi.ts                   wagmi config — sepolia ONLY
 │   └── types/domain.ts                Canonical types
 ├── scripts/
-│   ├── smoke.mjs                      Blocked + 9-dim risk + real CoinFello CLI (7 assertions)
+│   ├── smoke.mjs                      Blocked + 9-dim risk + real CoinFello get_account + sign_in (8 assertions, log-snapshot tightened)
 │   ├── demo_safe_e2e.mjs              Full 7-stage e2e (9 assertions, branch-aware)
 │   ├── screenshot.mjs                 Playwright harness (7 screenshots)
 │   ├── audit_forbidden.sh             Extra Judge/ggui token grep on product surface
@@ -98,7 +98,7 @@ bash scripts/harness/honesty_lint.sh      # expect: OK
 npx tsc --noEmit                          # expect: zero output
 
 # 3. (Optional) verify a clean production build
-npm run build                              # expect: ✓ Compiled successfully, 11 routes
+npm run build                              # expect: ✓ Compiled successfully, 18 routes
 
 # 4. Start dev server
 rm -rf .next && npm run dev &              # http://localhost:3000
@@ -106,8 +106,10 @@ rm -rf .next && npm run dev &              # http://localhost:3000
 # 5a. Run SIM-mode demos (no env)
 curl -s -o /dev/null -w "page %{http_code}\n" http://localhost:3000/
 rm -f data/memory.jsonl                    # clean slate
-node scripts/smoke.mjs                     # expect: 7/7 PASS
+node scripts/smoke.mjs                     # expect: 8/8 PASS (incl. sign_in)
 node scripts/demo_safe_e2e.mjs             # expect: 9/9 SIM PASS
+node scripts/demo_dca_e2e.mjs              # expect: 6/6 PASS (P1.2 DCA flow)
+node scripts/demo_stale_delegation.mjs     # expect: 6/6 PASS (H5 regression suite)
 
 # 5b. Run REAL-mode demo (requires funded signer — see below)
 source ~/.fellopilot/signer.env

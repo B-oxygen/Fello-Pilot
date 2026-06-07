@@ -81,6 +81,8 @@ console.log("txHash:", r.txHash);
 console.log("explorerUrl:", r.explorerUrl);
 console.log("blockedReasons.length:", r.blockedReasons?.length);
 
+const logLinesBeforeCoinFello = readCommandsLogLineCount();
+
 console.log("\n=== CoinFello get_account (real CLI invocation for M1.3 evidence) ===");
 const cfStart = Date.now();
 let cfResult;
@@ -91,6 +93,7 @@ try {
   cfResult = { ok: false, error: String(err) };
 }
 const cfMs = Date.now() - cfStart;
+const logLinesAfterGetAccount = readCommandsLogLineCount();
 console.log("ok:", cfResult.ok ?? false);
 console.log("duration_ms:", cfMs);
 if (cfResult.stdout) {
@@ -125,14 +128,22 @@ console.log(
   "log line should now exist in logs/commands.jsonl with stage=coinfello_sign_in_invoked",
 );
 
-function commandsLogContainsStage(stage) {
+function readCommandsLogLineCount() {
   try {
     const raw = readFileSync(resolve(process.cwd(), "logs/commands.jsonl"), "utf8");
-    for (const line of raw.split("\n")) {
-      const t = line.trim();
-      if (!t) continue;
+    return raw.split("\n").filter((l) => l.trim().length > 0).length;
+  } catch {
+    return 0;
+  }
+}
+
+function commandsLogHasStageSince(stage, sinceLineCount) {
+  try {
+    const raw = readFileSync(resolve(process.cwd(), "logs/commands.jsonl"), "utf8");
+    const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+    for (let i = sinceLineCount; i < lines.length; i++) {
       try {
-        const j = JSON.parse(t);
+        const j = JSON.parse(lines[i]);
         if (j.stage === stage) return true;
       } catch {
         // ignore malformed lines
@@ -153,12 +164,18 @@ const honestyChecks = [
   { name: "unsafe risk.verdict fail", pass: unsafeRisk.json.verdict === "fail" },
   { name: "9 risk dims", pass: safeRisk.json.dimensions.length === 9 },
   {
-    name: "coinfello get_account stage logged in commands.jsonl",
-    pass: commandsLogContainsStage("coinfello_get_account_invoked"),
+    name: "coinfello get_account stage appended to commands.jsonl by THIS run",
+    pass: commandsLogHasStageSince(
+      "coinfello_get_account_invoked",
+      logLinesBeforeCoinFello,
+    ),
   },
   {
-    name: "coinfello sign_in stage logged in commands.jsonl",
-    pass: commandsLogContainsStage("coinfello_sign_in_invoked"),
+    name: "coinfello sign_in stage appended to commands.jsonl by THIS run",
+    pass: commandsLogHasStageSince(
+      "coinfello_sign_in_invoked",
+      logLinesAfterGetAccount,
+    ),
   },
 ];
 let fails = 0;
