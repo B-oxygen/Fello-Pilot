@@ -191,7 +191,7 @@ Seven binding promises. Any release that violates one rolls back.
 ### IN (working in chat UI right now — verified end-to-end)
 
 - All 7 stages wired with chat cards (`<ProposalCard>`, `<RiskCard>`, `<DelegationCard>`, `<ReceiptCard>`, `<MemoryPanel>`).
-- **17 ChatMessage variants** implemented and selector-tagged: `user`, `intent-rejected`, `proposal-failed`, `pending`, `proposal`, `risk-report`, `risk-blocked`, `wallet-connect-prompt`, `wallet-connected`, `wallet-refused`, `network-mismatch`, `network-required-sepolia`, `personal-sign-fallback-notice`, `delegation-signed`, `signature-refused`, `adapter-fallback`, `receipt`. (4 variants — `llm-fallback-notice`, `risk-blocked-tick`, `dca-progress`, `trigger-fired` — are spec-only because LLM and DCA/alert-triggered runtime are deferred per PRD §10.)
+- **22 ChatMessage variants** implemented and selector-tagged: `user`, `intent-rejected`, `proposal-failed`, `pending`, `proposal`, `risk-report`, `risk-blocked`, `wallet-connect-prompt`, `wallet-connected`, `wallet-refused`, `network-mismatch`, `network-required-sepolia`, `personal-sign-fallback-notice`, `delegation-signed`, `signature-refused`, `adapter-fallback`, `receipt`, `llm-fallback-notice`, `dca-progress`, `risk-blocked-tick`, `alert-armed`, `trigger-fired`. (All 21 PRD-spec'd variants land; `alert-armed` is an internal UX scaffold that hosts the Simulate-trigger button.)
 - **9 risk dimensions** enforced (6 ported from prior art + 3 new: `slippageWithinCap`, `expiryWithinWindow`, `recipientAllowed`). All evaluated per call in `src/lib/risk.ts:21-133`; verified by `scripts/smoke.mjs`.
 - **EIP-712 typed-data signing** with `personal_sign` fallback. Server verifies BOTH via viem `verifyTypedData` + `verifyMessage` (`src/app/api/delegation/verify/route.ts`). End-to-end proof: `scripts/demo_safe_e2e.mjs` generates a real test private key, produces a valid typed-data signature, verifies it server-side, executes mock adapter, gets a `simulated_attestation` receipt — 8/8 assertions pass.
 - **3 adapters** (`mock`, `direct_viem`, `coinfello`). `mock` produces SIMULATION receipts (default, no signer needed). `direct_viem` produces **real Sepolia attestation transactions** with viem `walletClient.sendTransaction` + `waitForTransactionReceipt` (60s timeout) when `FELLOPILOT_ADAPTER=direct_viem` and `FELLOPILOT_TESTNET_SIGNER_KEY` are set; verified onchain (see Verification evidence below). `coinfello` wrapper invokes the real CLI for M1.3 evidence.
@@ -204,12 +204,17 @@ Seven binding promises. Any release that violates one rolls back.
 - **Network mismatch handling** — switch-to-Sepolia button when chain ≠ 11155111, followed by `network-required-sepolia` confirmation strip.
 - **Scroll lock** — auto-scroll suppressed when user has scrolled >200px from bottom.
 
-### OUT (spec'd in PRD §10, deferred)
+### Now SHIPPED (was deferred in PRD §10 first pass)
 
-- Real ERC-7710 onchain delegation contract (current is EIP-712 typed-data metadata only).
-- DCA + alert-triggered execution policies — proposal schema supports them; runtime watcher not implemented.
-- LLM-generated proposal — currently deterministic rule-based parser.
-- Real CoinFello `sign_in` SIWE flow — only `get_account` adapter wrapped.
+- **LLM-generated proposal** — OpenAI Responses API (`gpt-4.1-mini`) via `src/lib/llmProposal.ts`. Deterministic rule-based parser remains as a fallback that fires when `OPENAI_API_KEY` is missing or the LLM call fails — both routes emit an `llm-fallback-notice` chat strip (H2 honesty invariant). Secret/empty (E001/E002) checks precede the LLM call so seed phrases never leave the box (H4).
+- **DCA executionPolicy runtime** — `src/lib/runtime/dcaScheduler.ts` + `data/dca_ledger.json` + `/api/dca/{start,tick,state}` routes. Per-tick 9-dim risk re-evaluation. Failing dims emit `risk-blocked-tick` (no spend). Successful ticks emit `dca-progress` strip + simulated_attestation receipt with `tickIndex/totalTicks`. Verified e2e via `scripts/demo_dca_e2e.mjs` (6/6 honesty assertions PASS).
+- **Alert-triggered runtime** — `src/lib/runtime/alertSimulator.ts` + `data/alert_state.json` + `/api/alert/{start,simulate_trigger,state}` routes. Per PRD §10 uses the "Simulate trigger fire" button (NOT a Chainlink integration — real price feeds remain OUT of scope). Trigger spawns a fresh proposal with `parentProposalId` traceability in memory.
+- **Real CoinFello `sign_in`** — `runSignIn()` in `src/lib/adapters/coinfello.ts` + `/api/coinfello/sign_in` route. `RPC_URL_OVERRIDE` defaults to `https://ethereum-rpc.publicnode.com` per `.omo/rules/env.md`. Smoke output shows real SIWE round-trip: `Sign-in successful. User ID: S7JOYFG0...`.
+
+### Still OUT (operator confirmation required to expand)
+
+- Real ERC-7710 onchain delegation contract — PRD §10 explicitly defers. Attestation tx (`0x334906f0…`) is the in-spec equivalent.
+- Cross-chain intents, Base Sepolia, multi-user / SIWE UX — boundary kept narrow.
 
 The full spec, including all deferred items with concrete acceptance criteria, lives in [`.sisyphus/plans/fellopilot-prd.md`](.sisyphus/plans/fellopilot-prd.md) (808 lines, M1/M2/M3 binary).
 

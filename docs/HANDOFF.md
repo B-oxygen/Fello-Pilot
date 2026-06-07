@@ -9,14 +9,16 @@
 
 ## TL;DR (60-second briefing)
 
-FelloPilot is a 7-stage chat-based AI crypto execution autopilot on Sepolia testnet. The 90-minute demo is **shipped and live**. Both honesty branches verified end-to-end:
+FelloPilot is a 7-stage chat-based AI crypto execution autopilot on Sepolia testnet. The 90-minute demo is **shipped and live**, plus Priority-1 deferred items (LLM proposal, DCA runtime, alert simulator, CoinFello SIWE sign_in) all shipped 2026-06-07. Both honesty branches verified end-to-end:
 
 - **REAL branch** — `FELLOPILOT_ADAPTER=direct_viem` + funded signer → real Sepolia attestation tx with Etherscan link.
 - **SIM branch** — default mock adapter → labeled SIMULATION receipt with `txHash:undefined ∧ explorerUrl:undefined`.
 
 **Milestones**: M1 ✅ · M2 ✅ · M3 ✅ (14/15 sub-conditions PASS, 1 PARTIAL honestly noted for H7 multi-tab wallet edges).
 
-Remaining work is **optional polish + scope-expansion items** explicitly deferred in `PRD §10`. The hackathon deliverable is complete.
+**P1 deferred items**: P1.1 ✅ · P1.2 ✅ · P1.3 ✅ · P1.4 ✅. All 21 PRD ChatMessage variants now implemented (was 17). LLM uses OpenAI Responses API (`gpt-4.1-mini`). DCA + alert routes verified e2e (`scripts/demo_dca_e2e.mjs` 6/6 PASS).
+
+Remaining work is **only scope-expansion** (P1.5 ERC-7710 contract — operator confirmation required) and Priority-2/3 polish.
 
 ---
 
@@ -167,15 +169,20 @@ Unset `FELLOPILOT_ADAPTER` to fall back to mock (SIMULATION branch).
 
 ## What's left (optional, by priority)
 
-### Priority 1 — Real feature gaps (spec'd in PRD §10)
+### Priority 1 — SHIPPED 2026-06-07
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 1.1 | LLM-generated proposal (OpenAI Responses + rule-based fallback) | ✅ shipped | `src/lib/llmProposal.ts` (`gpt-4.1-mini`, json_schema strict, 10s timeout). `commands.jsonl` stage `llm_proposal_succeeded` with model name. fallbackTrail emits `llm-fallback-notice` chat on E003 (key missing, timeout, JSON-parse failure). E001/E002 still precede LLM call (H4 invariant). |
+| 1.2 | DCA runtime watcher | ✅ shipped | `src/lib/runtime/dcaScheduler.ts` + `data/dca_ledger.json` + `/api/dca/{start,tick,state}`. Per-tick 9-dim risk re-eval. `scripts/demo_dca_e2e.mjs` 6/6 PASS — 2 ticks at 5s cadence, `simulated_attestation` receipts, `tickIndex/totalTicks` in receipts + memory. |
+| 1.3 | Alert-triggered watcher | ✅ shipped | `src/lib/runtime/alertSimulator.ts` + `data/alert_state.json` + `/api/alert/{start,simulate_trigger,state}`. Per PRD §10 uses Simulate-trigger button (NOT Chainlink — that remains out of scope). Trigger spawns fresh proposal with `parentProposalId` traceability in memory. Verified end-to-end via curl. |
+| 1.4 | Real CoinFello SIWE `sign_in` | ✅ shipped | `runSignIn()` in `src/lib/adapters/coinfello.ts` + `/api/coinfello/sign_in` route + smoke.mjs assertion. `RPC_URL_OVERRIDE` defaults to publicnode per `.omo/rules/env.md`. Smoke output: `Sign-in successful. User ID: S7JOYFG0...`. Per PRD §10 line 664 we do NOT own a full SIWE UX — only the CLI invocation surface. |
+
+### Priority 1 — Still DEFERRED (operator confirmation required)
 
 | # | Item | Effort | Notes |
 |---|---|---|---|
-| 1.1 | LLM-generated proposal (replace rule-based intent parser) | ~30 min | OpenAI Responses API recommended (per uniport-cointoss pattern). Add `llm-fallback-notice` chat variant. Add E003 timeout fallback. |
-| 1.2 | DCA runtime watcher | ~45 min | Proposal schema already supports `executionPolicy.dca`. Add scheduler that consumes from `data/dca_ledger.json` per tick; re-runs 9-dim risk per tick. Adds `dca-progress` + `risk-blocked-tick` chat variants. |
-| 1.3 | Alert-triggered runtime watcher | ~30 min | Proposal schema already supports `executionPolicy.alert_triggered`. Add poller (mocked price feed for demo, or Chainlink Sepolia ETH/USD). Spawns new proposal on trigger → returns to Stage 2. Adds `trigger-fired` chat variant. |
-| 1.4 | Real CoinFello SIWE `sign_in` flow | ~20 min | Currently `get_account` only. Add `/api/coinfello/sign_in` route + UI affordance + RPC_URL_OVERRIDE handling per `.omo/rules/env.md`. |
-| 1.5 | Real ERC-7710 onchain delegation contract | ~60-90 min | Currently EIP-712 metadata only. Would need: contract deployment to Sepolia, `redeemDelegation` adapter call, on-chain spending cap enforcement. Major scope; consider whether attestation is "good enough" for demo. |
+| 1.5 | Real ERC-7710 onchain delegation contract | ~60-90 min | Currently EIP-712 metadata only. Would need: contract deployment to Sepolia, `redeemDelegation` adapter call, on-chain spending cap enforcement. **Per PRD §10 line 665 this is explicitly BUILD-NEW for post-demo.** Real attestation tx (`0x334906f0…`) is the in-spec equivalent. |
 
 ### Priority 2 — PRD §12 Open Issues (operator decisions)
 
