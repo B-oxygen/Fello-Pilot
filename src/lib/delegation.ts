@@ -58,6 +58,43 @@ function proposalIdToBytes32(proposalId: string): Hex {
   return keccak256(toBytes(proposalId));
 }
 
+// Canonical personal-sign string formatter. EXPORTED so the verify route can
+// recompute the expected string from body.message + chainId + intentHash and
+// refuse personal_sign signatures over an unrelated proposal's string (H5).
+export function formatPersonalSignMessage(args: {
+  message: DelegationIntentMessage;
+  chainId: number;
+  intentHash: Hex;
+}): string {
+  return [
+    "FelloPilot Delegation Intent",
+    `Approver: ${args.message.approver}`,
+    `Action: ${args.message.action}`,
+    `Chain ID: ${args.chainId}`,
+    `Spending cap: ${args.message.spendingCap.toString()}`,
+    `Allowlist: ${args.message.tokenAllowlist.join(",")}`,
+    `Expiry (unix seconds): ${args.message.expiry.toString()}`,
+    `Proposal hash: ${args.message.proposalId}`,
+    `Intent hash: ${args.intentHash}`,
+  ].join("\n");
+}
+
+export function hashDelegationMessage(args: {
+  message: DelegationIntentMessage;
+  chainId: number;
+}): Hex {
+  return hashTypedData({
+    domain: {
+      name: DELEGATION_INTENT_DOMAIN_NAME,
+      version: DELEGATION_INTENT_VERSION,
+      chainId: args.chainId,
+    },
+    types: DELEGATION_INTENT_TYPES,
+    primaryType: DELEGATION_INTENT_PRIMARY_TYPE,
+    message: args.message,
+  });
+}
+
 export function buildDelegationIntent(args: {
   proposal: TradeProposal;
   approver: Address;
@@ -94,24 +131,12 @@ export function buildDelegationIntent(args: {
     chainId,
   } as const;
 
-  const hash = hashTypedData({
-    domain,
-    types: DELEGATION_INTENT_TYPES,
-    primaryType: DELEGATION_INTENT_PRIMARY_TYPE,
+  const hash = hashDelegationMessage({ message, chainId });
+  const personalSignMessage = formatPersonalSignMessage({
     message,
+    chainId,
+    intentHash: hash,
   });
-
-  const personalSignMessage = [
-    "FelloPilot Delegation Intent",
-    `Approver: ${args.approver}`,
-    `Action: ${message.action}`,
-    `Chain ID: ${chainId}`,
-    `Spending cap: ${spendingCap.toString()}`,
-    `Allowlist: ${tokenAllowlist.join(",")}`,
-    `Expiry (unix seconds): ${expiry.toString()}`,
-    `Proposal hash: ${proposalId}`,
-    `Intent hash: ${hash}`,
-  ].join("\n");
 
   return {
     domain,

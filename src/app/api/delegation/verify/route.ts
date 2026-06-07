@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { deserializeMessage, verifyDelegationSignature } from "@/lib/delegation";
+import {
+  deserializeMessage,
+  formatPersonalSignMessage,
+  hashDelegationMessage,
+  verifyDelegationSignature,
+} from "@/lib/delegation";
 import { appendCommandLog, writeJson, DataFile } from "@/lib/store";
 import { keccak256, toBytes, verifyMessage } from "viem";
 import type { Address, Hex } from "viem";
@@ -36,6 +41,7 @@ export async function POST(request: Request) {
       expectedHashedProposalId.toLowerCase();
 
   let valid = false;
+  let personalSignBindingValid: boolean | undefined;
   if (proposalIdBindingValid) {
     try {
       if (body.method === "eth_signTypedData_v4") {
@@ -46,11 +52,30 @@ export async function POST(request: Request) {
           expectedAddress: body.approver as Address,
         });
       } else if (body.method === "personal_sign" && body.personalSignMessage) {
-        valid = await verifyMessage({
-          address: body.approver as Address,
-          message: body.personalSignMessage,
-          signature: body.signature as Hex,
+        // H5 invariant for the personal_sign fallback: the bytes the wallet
+        // actually signed (body.personalSignMessage) MUST be the canonical
+        // string derived from body.message + body.chainId. Otherwise a client
+        // could sign proposal A's personalSignMessage and submit it under
+        // body.message=B / body.proposalId=B — bypassing the typed-data bind.
+        const reconstructedMessage = deserializeMessage(body.message);
+        const expectedIntentHash = hashDelegationMessage({
+          message: reconstructedMessage,
+          chainId: body.chainId,
         });
+        const expectedPersonalSign = formatPersonalSignMessage({
+          message: reconstructedMessage,
+          chainId: body.chainId,
+          intentHash: expectedIntentHash,
+        });
+        personalSignBindingValid =
+          body.personalSignMessage === expectedPersonalSign;
+        if (personalSignBindingValid) {
+          valid = await verifyMessage({
+            address: body.approver as Address,
+            message: body.personalSignMessage,
+            signature: body.signature as Hex,
+          });
+        }
       }
     } catch (err) {
       valid = false;
@@ -75,9 +100,11 @@ export async function POST(request: Request) {
     approvedAt: valid ? new Date().toISOString() : undefined,
     message: valid
       ? "Delegation signature verified."
-      : proposalIdBindingValid
-        ? "Delegation signature mismatch."
-        : `Refused: body.proposalId (${body.proposalId}) does not bind the signed message.proposalId hash.`,
+      : !proposalIdBindingValid
+        ? `Refused: body.proposalId (${body.proposalId}) does not bind the signed message.proposalId hash.`
+        : personalSignBindingValid === false
+          ? "Refused: body.personalSignMessage does not match the canonical string derived from body.message + chainId."
+          : "Delegation signature mismatch.",
     updatedAt: new Date().toISOString(),
     connectedWallet: {
       eoaAddress: body.approver,
@@ -101,8 +128,14 @@ export async function POST(request: Request) {
     signatureMethod: body.method,
     valid,
     proposalIdBindingValid,
+    personalSignBindingValid: personalSignBindingValid ?? null,
     intentHashPresent: Boolean(intentHash),
   });
 
-  return NextResponse.json({ valid, state, proposalIdBindingValid });
+  return NextResponse.json({
+    valid,
+    state,
+    proposalIdBindingValid,
+    personalSignBindingValid: personalSignBindingValid ?? null,
+  });
 }

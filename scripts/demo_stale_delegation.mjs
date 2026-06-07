@@ -150,8 +150,6 @@ console.log(
 );
 
 console.log("\n=== Test 6: /api/execute refuses when active proposal != delegation.proposalId ===");
-// Sign proposal A delegation honestly. Then swap the active proposal to a
-// fresh oneshot B without re-signing. /api/execute must refuse.
 const propAfresh = (await post("/api/proposal", { intent: ONESHOT_INTENT })).json
   .proposal;
 await buildSignVerify(propAfresh, account);
@@ -165,6 +163,61 @@ const executeMismatch = await post("/api/execute", null);
 console.log(
   "  /api/execute under unbound delegation:",
   JSON.stringify(executeMismatch.json).slice(0, 400),
+);
+
+console.log("\n=== Test 7: personal_sign cannot use proposal A's signed string to approve proposal B ===");
+// Build delegation intent for proposal P. Sign builtP.personalSignMessage.
+// Then build delegation intent for proposal Q (different proposal). Submit
+// verify with body.message = builtQ.message (so body.message.proposalId
+// matches Q's hash and proposalIdBindingValid passes), but
+// body.personalSignMessage = builtP.personalSignMessage and signature = sigP.
+// Server MUST reject because builtP's string is not the canonical string
+// derived from body.message=Q. Otherwise an attacker could approve Q under
+// P's wallet signature via the personal_sign fallback.
+const propP = (await post("/api/proposal", { intent: ONESHOT_INTENT })).json
+  .proposal;
+const builtP = (
+  await post("/api/delegation/build", {
+    proposal: propP,
+    approver: account.address,
+    chainId: CHAIN_ID,
+  })
+).json;
+const sigP_personal = await account.signMessage({
+  message: builtP.personalSignMessage,
+});
+const propQ = (
+  await post("/api/proposal", {
+    intent:
+      "Sepolia testnet에서 0.5 USDC를 ETH로 단발성 스왑. mainnet 금지. 사람 승인 필수.",
+  })
+).json.proposal;
+const builtQ = (
+  await post("/api/delegation/build", {
+    proposal: propQ,
+    approver: account.address,
+    chainId: CHAIN_ID,
+  })
+).json;
+const personalSignBypassAttempt = await post("/api/delegation/verify", {
+  proposalId: propQ.id,
+  approver: account.address,
+  chainId: CHAIN_ID,
+  signature: sigP_personal,
+  method: "personal_sign",
+  message: builtQ.message,
+  personalSignMessage: builtP.personalSignMessage,
+  delegationIntentHash: builtQ.hash,
+});
+console.log(
+  "  /api/delegation/verify with cross-proposal personal_sign:",
+  JSON.stringify({
+    valid: personalSignBypassAttempt.json.valid,
+    proposalIdBindingValid: personalSignBypassAttempt.json.proposalIdBindingValid,
+    personalSignBindingValid:
+      personalSignBypassAttempt.json.personalSignBindingValid,
+    state_status: personalSignBypassAttempt.json.state?.status,
+  }),
 );
 
 console.log("\n=== Assertions ===");
@@ -213,6 +266,14 @@ const checks = [
       ) &&
       executeMismatch.json.activeProposalId === propBoneshot.id &&
       executeMismatch.json.delegationProposalId === propAfresh.id,
+  },
+  {
+    name: "personal_sign bypass refused: signed string for P cannot approve Q",
+    pass:
+      personalSignBypassAttempt.json.proposalIdBindingValid === true &&
+      personalSignBypassAttempt.json.personalSignBindingValid === false &&
+      personalSignBypassAttempt.json.valid === false &&
+      personalSignBypassAttempt.json.state?.status === "rejected",
   },
 ];
 let fails = 0;
