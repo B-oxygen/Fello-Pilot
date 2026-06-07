@@ -338,8 +338,8 @@ If you ever redeploy (e.g., changing the EIP-712 domain or struct fields), bump 
 ### 13. `directViem.ts` has two attestation paths
 Both produce `variant: real_attestation` with a real Sepolia tx + explorer URL, so honesty H1 holds either way. Switching logic is `delegation.attestation` presence:
   - PRESENT (eth_signTypedData_v4 path, which is the typical happy path): contract call to `DelegationManager.attestIntent(intent, signature)`. Receipt carries `contractAddress` + `contractFunction: "attestIntent"` + `contractAudited: false`.
-  - ABSENT (personal_sign fallback path): legacy 0-value self-tx with ABI-encoded `(approver, intentHash)` calldata. Receipt has no contract metadata.
-Do NOT remove the legacy path until the verify route persists raw signatures for personal_sign too.
+  - ABSENT (personal_sign fallback path): compatibility attestation path without contract metadata, retained until the verify route persists raw personal_sign signatures too.
+Do NOT remove the compatibility path until the verify route persists raw signatures for personal_sign too.
 
 ---
 
@@ -380,15 +380,15 @@ Do NOT remove the legacy path until the verify route persists raw signatures for
   "timestamp": "2026-06-07T08:36:50.000Z",
   "chainId": 11155111,
   "chainName": "sepolia",
-  "txnId": "0x334906f0463ca5d8aa26b661fec2f2c9713731b1a49a01b677a257a321b4e9b7",
-  "txHash": "0x334906f0463ca5d8aa26b661fec2f2c9713731b1a49a01b677a257a321b4e9b7",
-  "explorerUrl": "https://sepolia.etherscan.io/tx/0x334906f0463ca5d8aa26b661fec2f2c9713731b1a49a01b677a257a321b4e9b7",
+  "txnId": "0xccdc33b3c2704f623f12f43c754b212352b2da5a7b1ae675265b5e34bee79f35",
+  "txHash": "0xccdc33b3c2704f623f12f43c754b212352b2da5a7b1ae675265b5e34bee79f35",
+  "explorerUrl": "https://sepolia.etherscan.io/tx/0xccdc33b3c2704f623f12f43c754b212352b2da5a7b1ae675265b5e34bee79f35",
   "rawReceipt": {
     "attestation": true,
     "approver": "0x1248AeE7Ea81E0236aC110FD3535bbb986e28772",
     "delegationIntentHash": "0x03fbcd0c395009449f2e2587481d53f5d1bb8ff8a259b3991c75b5d7968321d0",
-    "blockNumber": "11007508",
-    "gasUsed": "23200",
+    "blockNumber": "11009802",
+    "gasUsed": "57590",
     "effectiveGasPrice": "...",
     "signerAddress": "0x9C561f634FaAca9335C94434Ad1096Aa66123527",
     "signerBalanceBefore": "2.781..."

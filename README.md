@@ -7,7 +7,7 @@
 [![Status](https://img.shields.io/badge/build-90--min_demo-1a9d57?style=flat-square)](#whats-in-this-build)
 [![Honesty](https://img.shields.io/badge/honesty-H1--H6_PASS_·_H7_PARTIAL-1a9d57?style=flat-square)](#honesty-contract)
 [![Chain](https://img.shields.io/badge/chain-Sepolia_only-097aff?style=flat-square)](src/lib/wagmi.ts)
-[![Real Tx](https://img.shields.io/badge/real_attestation-verified_onchain-1a9d57?style=flat-square)](https://sepolia.etherscan.io/tx/0x068e9c3b546b1e6360028622e1815563188ac68344178010ddc6c82da9edfdb9)
+[![Real Tx](https://img.shields.io/badge/real_attestation-verified_onchain-1a9d57?style=flat-square)](https://sepolia.etherscan.io/tx/0xccdc33b3c2704f623f12f43c754b212352b2da5a7b1ae675265b5e34bee79f35)
 
 ---
 
@@ -59,7 +59,7 @@ Each terminal session writes a typed entry (intent, proposal, risk verdict, dele
 
 ![Real attestation memory](docs/screenshots/07-real-attestation-memory.png)
 
-When `FELLOPILOT_ADAPTER=direct_viem` is set and the signer is funded, the memory panel shows `real_attestation` entries with real Sepolia tx hashes. Click-through to Etherscan resolves to a successful 0-value self-tx whose calldata is `(approver, delegationIntentHash)` ABI-encoded — the FelloPilot service anchored your wallet-signed intent onchain.
+When `FELLOPILOT_ADAPTER=direct_viem` is set and the signer is funded, the memory panel shows `real_attestation` entries with real Sepolia tx hashes. Click-through to Etherscan resolves to a successful `DelegationManager.attestIntent(intent, signature)` call — the FelloPilot service anchored your wallet-signed delegation intent onchain through the UNAUDITED testnet contract.
 
 ---
 
@@ -116,13 +116,12 @@ scripts/demo_safe_e2e.mjs — Honesty assertions for FULL SAFE e2e (REAL branch)
   PASS  memory.delegation.signed === true
   PASS  honesty: never both simulated:true AND a 0x.. txHash
 
-Sample onchain transactions (Sepolia, verified via viem.getTransactionReceipt):
-  • 0x068e9c3b546b1e6360028622e1815563188ac68344178010ddc6c82da9edfdb9
-    https://sepolia.etherscan.io/tx/0x068e9c3b546b1e6360028622e1815563188ac68344178010ddc6c82da9edfdb9
-    status=success, block 11,007,508, gasUsed 23,200, value 0 wei (attestation self-tx)
-    calldata = (approver 0x1248…8772, delegationIntentHash 0x03fbcd0c…)
-  • 0x3ce5d7f93b1f16f1bc787b45af7f33b05e64166496db8cca35acd16fe0c67312
-    https://sepolia.etherscan.io/tx/0x3ce5d7f93b1f16f1bc787b45af7f33b05e64166496db8cca35acd16fe0c67312
+Sample onchain transaction (Sepolia, verified via viem.getTransactionReceipt):
+  • 0xccdc33b3c2704f623f12f43c754b212352b2da5a7b1ae675265b5e34bee79f35
+    https://sepolia.etherscan.io/tx/0xccdc33b3c2704f623f12f43c754b212352b2da5a7b1ae675265b5e34bee79f35
+    status=success, block 11,009,802, gasUsed 57,590, value 0 wei
+    contract = DelegationManager at 0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247
+    event = DelegationAttested(intentHash, approver)
 ```
 
 #### Default (mock adapter, no signer needed)
@@ -210,10 +209,10 @@ Seven binding promises. Any release that violates one rolls back.
 - **DCA executionPolicy runtime** — `src/lib/runtime/dcaScheduler.ts` + `data/dca_ledger.json` + `/api/dca/{start,tick,state}` routes. Per-tick 9-dim risk re-evaluation. Failing dims emit `risk-blocked-tick` (no spend). Successful ticks emit `dca-progress` strip + simulated_attestation receipt with `tickIndex/totalTicks`. Verified e2e via `scripts/demo_dca_e2e.mjs` (6/6 honesty assertions PASS).
 - **Alert-triggered runtime** — `src/lib/runtime/alertSimulator.ts` + `data/alert_state.json` + `/api/alert/{start,simulate_trigger,state}` routes. Per PRD §10 uses the "Simulate trigger fire" button (NOT a Chainlink integration — real price feeds remain OUT of scope). Trigger spawns a fresh proposal with `parentProposalId` traceability in memory.
 - **Real CoinFello `sign_in`** — `runSignIn()` in `src/lib/adapters/coinfello.ts` + `/api/coinfello/sign_in` route. `RPC_URL_OVERRIDE` defaults to `https://ethereum-rpc.publicnode.com` per `.omo/rules/env.md`. Smoke output shows real SIWE round-trip: `Sign-in successful. User ID: S7JOYFG0...`.
+- **ERC-7710-style DelegationManager** — UNAUDITED testnet contract deployed on Sepolia at `0xaD12fDC1fF472D54313Be5FCEc7b1D672B59e247`. `directViem` calls `attestIntent` for typed-data delegations; `redeemDelegation` includes on-chain expiry, token allowlist, replay, revocation, and ERC-20 spending-cap enforcement.
 
 ### Still OUT (operator confirmation required to expand)
 
-- Real ERC-7710 onchain delegation contract — PRD §10 explicitly defers. Attestation tx (`0x334906f0…`) is the in-spec equivalent.
 - Cross-chain intents, Base Sepolia, multi-user / SIWE UX — boundary kept narrow.
 
 The full spec, including all deferred items with concrete acceptance criteria, lives in [`.sisyphus/plans/fellopilot-prd.md`](.sisyphus/plans/fellopilot-prd.md) (808 lines, M1/M2/M3 binary).
@@ -224,7 +223,7 @@ The full spec, including all deferred items with concrete acceptance criteria, l
 
 | Milestone | Condition | Status |
 |---|---|---|
-| **M1.1** Honest receipt (real or labeled SIMULATION) | BOTH branches verified: mock produces `simulated:true ∧ txHash:undefined ∧ explorerUrl:undefined`; `direct_viem` produces real Sepolia attestation tx with `simulated:false ∧ txHash:0x… ∧ explorerUrl:https://sepolia.etherscan.io/tx/0x…`. NEVER both `simulated:true` AND a 0x… hash (H1 invariant). Sample real tx: `0x068e9c3b…` | ✅ both branches verified |
+| **M1.1** Honest receipt (real or labeled SIMULATION) | BOTH branches verified: mock produces `simulated:true ∧ txHash:undefined ∧ explorerUrl:undefined`; `direct_viem` produces real Sepolia contract attestation tx with `simulated:false ∧ txHash:0x… ∧ explorerUrl:https://sepolia.etherscan.io/tx/0x…`. NEVER both `simulated:true` AND a 0x… hash (H1 invariant). Sample real tx: `0xccdc33b3…` | ✅ both branches verified |
 | **M1.2** Demo intent constants match `.omo/rules/env.md` | `SAFE_DEMO_INTENT`/`UNSAFE_DEMO_INTENT` in `src/lib/constants.ts` verbatim | ✅ |
 | **M1.3** ≥1 real CoinFello CLI call logged | `node scripts/smoke.mjs` invokes `npx @coinfello/agent-cli get_account`; log line `{"stage":"coinfello_get_account_invoked","tool":"npx @coinfello/agent-cli get_account"}` in `logs/commands.jsonl`; real smart-account address `0xB03f…4D97` returned | ✅ verified |
 | **M1.4** Zero forbidden tokens on product | No `Base Sepolia` / `Judge` / `ggui` / `harness` strings in `src/` | ✅ |
@@ -241,7 +240,7 @@ The full spec, including all deferred items with concrete acceptance criteria, l
 | **M3.4** Memory entry shape matches PRD §6.7 | `MemoryEntry` interface enforced via TS | ✅ |
 
 **14/15 ✅ + 1 PARTIAL (honestly noted)**:
-- M1 fully ✅: real `direct_viem` Sepolia attestation now verified onchain (`0x068e9c3b…`, `0x3ce5d7f9…` on Sepolia). Mock SIMULATION OR-branch also verified.
+- M1 fully ✅: real `direct_viem` Sepolia contract attestation now verified onchain (`0xccdc33b3…` on Sepolia). Mock SIMULATION OR-branch also verified.
 - M2 fully ✅: honesty contract, SIMULATION labels, pending UI, secret + production-chain blocks.
 - M3 13/14 ✅, H7 marked PARTIAL only because rare multi-tab wallet state sync isn't enumerated. Server traces + client wallet-event traces + memory durability all verified.
 
