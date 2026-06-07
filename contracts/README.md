@@ -25,8 +25,8 @@ The contract address is pinned in `src/lib/constants.ts` as
 Records an EIP-712-signed DelegationIntent on-chain. Verifies the
 signature was produced by `intent.approver` over the EIP-712 hash of the
 struct under the contract's domain separator. Emits `DelegationAttested`.
-Does NOT move tokens. Matches the FelloPilot attestation semantics
-previously expressed as a 0-value self-tx with ABI-encoded calldata.
+Does NOT move tokens. This is the current FelloPilot contract-backed
+attestation path for wallet-signed delegation intents.
 
 This is the function the demo flow uses (via `src/lib/adapters/
 directViem.ts`).
@@ -53,5 +53,5 @@ The contract NatSpec marks itself UNAUDITED. The product UI surfaces a
 `chat-message-contract-unaudited-notice` strip whenever a receipt comes
 back with `contractAudited: false` (per operator decision).
 
-The PRD §10 line 665 deferral on "real ERC-7710 onchain delegation
-contract — BUILD-NEW for post-demo" is now CLOSED with this deployment.
+The original PRD deferral for an onchain delegation contract is closed
+with this Sepolia deployment.

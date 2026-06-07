@@ -388,7 +388,7 @@ EXECUTED_REAL | EXECUTED_SIMULATED | EXECUTION_FAILED
 1. Show `pending(stage=submitting)` then `pending(stage=verifying)`.
 2. Select adapter per `FELLOPILOT_ADAPTER` env. PRD specifies the **outcome guarantees**, not the order — engineers may implement fallback as a chain or fail-fast policy, with the constraint that any adapter swap MUST emit a visible `adapter-fallback` chat message (per §H2).
 3. Execute. Each adapter has a contract on receipt shape (see §4 Receipt Taxonomy):
-   - `direct_viem` produces `real_attestation` on success (anchored 0-value self-tx, `rawReceipt.attestation:true`).
+   - `direct_viem` produces `real_attestation` on success (contract-backed `DelegationManager.attestIntent`, `rawReceipt.attestation:true`).
    - `coinfello` produces `coinfello_routed` on success — currently unreachable for Sepolia per `capability_matrix.json`. When attempted on Sepolia, the adapter emits `adapter-fallback` and proceeds to the next viable adapter.
    - `mock` produces `simulated_attestation`. Receipt MUST satisfy `simulated:true && txHash===undefined && explorerUrl===undefined`.
    - Adapter failures mid-flight produce `failed`.
@@ -662,7 +662,7 @@ npm run dev
 - **Cross-chain intents** (e.g., "swap on Sepolia, send to Polygon"). Single-chain demo only.
 - **Base Sepolia support**. Token "Base Sepolia" is forbidden on product surface; wagmi config restricted to `sepolia` only.
 - **Production CoinFello SIWE/secure-enclave flow** beyond what's already wired via `npx @coinfello/agent-cli`. The product makes ≥1 real CLI call (e.g., `get_account` at session boot) for M1 evidence, but does not own a full SIWE UX.
-- **Real ERC-7710 onchain delegation contract**. Prior art has `ERC-7710-style` EIP-712 metadata, not the live ERC-7710 deployment. PRD treats onchain delegation contract as BUILD-NEW for post-demo.
+- **Third-party-audited production delegation contract**. The Sepolia UNAUDITED ERC-7710-style `DelegationManager` is shipped for this demo; a production audit remains outside demo scope.
 - **Trade automation that bypasses human approval**. "Alert-triggered" creates a new proposal each fire; it never auto-executes.
 - **Real-time market data / price feeds** integrated for alert triggers. Demo uses mocked or test-data triggers (e.g., a button labeled "Simulate trigger fire" inside the demo).
 
